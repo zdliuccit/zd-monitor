@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>React Integration - Web Monitor SDK</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; text-align: center; }
+        .section { margin: 20px 0; padding: 20px; border: 1px solid #eee; border-radius: 6px; }
+        button {
+            background: #61dafb;
+            color: #20232a;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-weight: 600;
+        }
+        button:hover { background: #4fa8c5; }
+        button.danger { background: #e74c3c; color: white; }
+        button.danger:hover { background: #c0392b; }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        .error-boundary {
+            padding: 10px;
+            border: 2px solid #e74c3c;
+            border-radius: 4px;
+            background: #fdf2f2;
+            color: #e74c3c;
+            margin: 10px 0;
+        }
+        .component-demo {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 10px 0;
+            background: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <!-- React -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- SDK -->
+    <script src="../dist/web-monitor-sdk.dev.js"></script>
+
+    <script>
+        const { useState, useEffect, useCallback, Component } = React;
+        const { createRoot } = ReactDOM;
+
+        // 初始化SDK
+        const sdk = new WebMonitorSDK.default({
+            appId: 'react-test-app',
+            reportUrl: 'https://httpbin.org/post',
+            debug: true,
+            sampling: 1,
+            beforeSend: (data) => {
+                window.logMessage && window.logMessage('📤 SDK发送数据:', data);
+                return data;
+            }
+        });
+
+        // 使用React插件
+        sdk.use(WebMonitorSDK.ReactPlugin);
+
+        // 错误边界组件
+        class ErrorBoundary extends Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null, errorInfo: null };
+            }
+
+            static getDerivedStateFromError(error) {
+                return { hasError: true };
+            }
+
+            componentDidCatch(error, errorInfo) {
+                this.setState({
+                    error: error,
+                    errorInfo: errorInfo
+                });
+                
+                window.logMessage && window.logMessage('❌ React错误边界捕获:', {
+                    message: error.message,
+                    stack: error.stack,
+                    componentStack: errorInfo.componentStack
+                });
+            }
+
+            render() {
+                if (this.state.hasError) {
+                    return React.createElement('div', { className: 'error-boundary' }, [
+                        React.createElement('h3', { key: 'title' }, '组件出错了！'),
+                        React.createElement('p', { key: 'message' }, this.state.error?.message),
+                        React.createElement('button', {
+                            key: 'reset',
+                            onClick: () => this.setState({ hasError: false, error: null, errorInfo: null })
+                        }, '重置组件')
+                    ]);
+                }
+
+                return this.props.children;
+            }
+        }
+
+        // 可能出错的组件
+        function ErrorComponent({ shouldError }) {
+            if (shouldError) {
+                throw new Error('这是React组件中的错误');
+            }
+
+            return React.createElement('div', { className: 'component-demo' }, [
+                React.createElement('h3', { key: 'title' }, '正常组件'),
+                React.createElement('p', { key: 'desc' }, '这个组件现在运行正常'),
+                React.createElement('button', {
+                    key: 'btn',
+                    className: 'danger',
+                    onClick: () => {
+                        throw new Error('组件内按钮触发的错误');
+                    }
+                }, '触发组件内错误')
+            ]);
+        }
+
+        // 主应用组件
+        function App() {
+            const [count, setCount] = useState(0);
+            const [showErrorComponent, setShowErrorComponent] = useState(false);
+            const [triggerError, setTriggerError] = useState(false);
+            const [logs, setLogs] = useState('');
+
+            // 日志函数
+            const logMessage = useCallback((message, data = null) => {
+                const time = new Date().toLocaleTimeString();
+                let logEntry = `<div><span style="color: #666;">[${time}]</span> ${message}`;
+                
+                if (data) {
+                    logEntry += `<br/><pre style="margin: 5px 0; color: #007bff; font-size: 10px;">${JSON.stringify(data, null, 2)}</pre>`;
+                }
+                
+                logEntry += '</div>';
+                setLogs(prev => prev + logEntry);
+            }, []);
+
+            // 将logMessage挂载到全局
+            useEffect(() => {
+                window.logMessage = logMessage;
+                return () => {
+                    delete window.logMessage;
+                };
+            }, [logMessage]);
+
+            // 组件挂载时的日志
+            useEffect(() => {
+                logMessage('✅ React应用已挂载');
+                logMessage('🔌 React插件已集成');
+                
+                // 设置用户信息
+                sdk.setUser('react-user-' + Date.now(), {
+                    framework: 'React',
+                    version: React.version
+                });
+            }, [logMessage]);
+
+            // 错误处理函数
+            const throwError = () => {
+                throw new Error('这是React函数组件中的错误');
+            };
+
+            const throwAsyncError = () => {
+                setTimeout(() => {
+                    throw new Error('这是React组件中的异步错误');
+                }, 100);
+                logMessage('⏰ 异步错误将在100ms后触发');
+            };
+
+            const triggerPromiseError = () => {
+                Promise.reject(new Error('这是React组件中的Promise错误'));
+                logMessage('🔄 触发了Promise错误');
+            };
+
+            const increment = () => {
+                setCount(prev => prev + 1);
+                logMessage(`🔢 计数增加到: ${count + 1}`);
+            };
+
+            const reset = () => {
+                setCount(0);
+                logMessage('🔄 计数已重置');
+            };
+
+            const clearLogs = () => {
+                setLogs('');
+            };
+
+            return React.createElement('div', { className: 'container' }, [
+                React.createElement('h1', { key: 'title' }, 'React + Web Monitor SDK 集成测试'),
+                
+                // 计数器部分
+                React.createElement('div', { key: 'counter', className: 'section' }, [
+                    React.createElement('h2', { key: 'title' }, 'React组件测试'),
+                    React.createElement('p', { key: 'count' }, `当前计数: ${count}`),
+                    React.createElement('button', { key: 'inc', onClick: increment }, '增加计数'),
+                    React.createElement('button', { key: 'reset', onClick: reset }, '重置计数')
+                ]),
+
+                // 错误测试部分
+                React.createElement('div', { key: 'errors', className: 'section' }, [
+                    React.createElement('h2', { key: 'title' }, 'React错误测试'),
+                    React.createElement('button', { key: 'js-error', className: 'danger', onClick: throwError }, '抛出JS错误'),
+                    React.createElement('button', { key: 'async-error', className: 'danger', onClick: throwAsyncError }, '抛出异步错误'),
+                    React.createElement('button', { key: 'promise-error', className: 'danger', onClick: triggerPromiseError }, '触发Promise错误')
+                ]),
+
+                // 错误边界测试
+                React.createElement('div', { key: 'boundary', className: 'section' }, [
+                    React.createElement('h2', { key: 'title' }, '错误边界测试'),
+                    React.createElement('button', {
+                        key: 'toggle',
+                        onClick: () => setShowErrorComponent(!showErrorComponent)
+                    }, showErrorComponent ? '隐藏错误组件' : '显示错误组件'),
+                    React.createElement('button', {
+                        key: 'trigger',
+                        className: 'danger',
+                        onClick: () => setTriggerError(!triggerError)
+                    }, '触发组件错误'),
+                    
+                    showErrorComponent && React.createElement(ErrorBoundary, { key: 'error-boundary' },
+                        React.createElement(ErrorComponent, { shouldError: triggerError })
+                    )
+                ]),
+
+                // 日志部分
+                React.createElement('div', { key: 'logs', className: 'section' }, [
+                    React.createElement('h2', { key: 'title' }, '日志输出'),
+                    React.createElement('button', { key: 'clear', onClick: clearLogs }, '清空日志'),
+                    React.createElement('div', {
+                        key: 'log-content',
+                        className: 'log',
+                        dangerouslySetInnerHTML: { __html: logs }
+                    })
+                ])
+            ]);
+        }
+
+        // 渲染应用
+        const container = document.getElementById('root');
+        const root = createRoot(container);
+        root.render(React.createElement(App));
+
+        // 监听全局错误
+        window.addEventListener('error', (e) => {
+            if (window.logMessage) {
+                window.logMessage('❌ 全局错误: ' + e.message);
+            }
+        });
+
+        window.addEventListener('unhandledrejection', (e) => {
+            if (window.logMessage) {
+                window.logMessage('❌ Promise错误: ' + e.reason);
+            }
+        });
+
+        console.log('🎉 React测试页面加载完成');
+    </script>
+</body>
+</html>

@@ -1,0 +1,72 @@
+{
+  "name": "web-monitor-sdk",
+  "version": "1.2.1",
+  "description": "Web performance monitoring and data tracking SDK",
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "dev": "rollup -c rollup.config.dev.js -w",
+    "build": "rollup -c rollup.config.prod.js",
+    "build:analyze": "yarn build && ls -lh dist/",
+    "serve": "http-server examples -p 8080 -o",
+    "dev:serve": "concurrently \"yarn dev\" \"yarn serve\"",
+    "lint": "eslint src --ext .ts",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist/",
+    "prebuild": "yarn clean",
+    "prepublish": "node scripts/prepublish.js",
+    "publish:patch": "node scripts/publish.js patch",
+    "publish:minor": "node scripts/publish.js minor",
+    "publish:major": "node scripts/publish.js major",
+    "publish:beta": "node scripts/publish.js patch beta",
+    "publish:alpha": "node scripts/publish.js patch alpha",
+    "publish:dry": "npm publish --dry-run",
+    "release": "yarn publish:patch"
+  },
+  "keywords": [
+    "performance",
+    "monitoring",
+    "tracking",
+    "sdk",
+    "web-vitals",
+    "error-tracking"
+  ],
+  "author": "Your Name <your.email@example.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/web-monitor-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/web-monitor-sdk/issues"
+  },
+  "homepage": "https://github.com/your-username/web-monitor-sdk#readme",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.0",
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-terser": "^0.4.0",
+    "@rollup/plugin-typescript": "^11.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "concurrently": "^8.0.0",
+    "eslint": "^8.40.0",
+    "http-server": "^14.1.0",
+    "rollup": "^3.20.0",
+    "tslib": "^2.5.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "web-vitals": "^3.3.0"
+  },
+  "packageManager": "yarn@4.9.1+sha512.f95ce356460e05be48d66401c1ae64ef84d163dd689964962c6888a9810865e39097a5e9de748876c2e0bf89b232d583c33982773e9903ae7a76257270986538"
+}

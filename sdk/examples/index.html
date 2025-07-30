@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Monitor SDK - 测试页面</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #eee;
+            border-radius: 6px;
+        }
+        .section h2 {
+            color: #666;
+            margin-top: 0;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button.danger {
+            background: #dc3545;
+        }
+        button.danger:hover {
+            background: #c82333;
+        }
+        input, textarea {
+            width: 200px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 5px;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            margin-top: 15px;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .metric {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .metric-name {
+            font-weight: bold;
+            color: #495057;
+        }
+        .metric-value {
+            font-size: 18px;
+            color: #007bff;
+            margin-top: 5px;
+        }
+        .slow-resource {
+            width: 100px;
+            height: 100px;
+            background: url('https://httpbin.org/delay/3') no-repeat;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Web Monitor SDK 测试页面</h1>
+        
+        <div class="section">
+            <h2>🚀 性能测试</h2>
+            <button onclick="loadLargeImage()">加载大图片</button>
+            <button onclick="loadSlowResource()">加载慢资源</button>
+            <button onclick="triggerLongTask()">触发长任务</button>
+            <button onclick="causeLayoutShift()">引起布局偏移</button>
+            <div class="slow-resource" id="slowResource" style="display: none;"></div>
+        </div>
+
+        <div class="section">
+            <h2>❌ 错误测试</h2>
+            <button class="danger" onclick="throwJSError()">抛出JS错误</button>
+            <button class="danger" onclick="throwPromiseError()">Promise错误</button>
+            <button class="danger" onclick="loadBrokenImage()">加载失败的图片</button>
+            <button class="danger" onclick="makeFailedAPI()">失败的API请求</button>
+            <button class="danger" onclick="reportCustomError()">自定义错误</button>
+        </div>
+
+        <div class="section">
+            <h2>👤 用户行为测试</h2>
+            <button onclick="trackCustomBehavior()">自定义行为</button>
+            <button onclick="changeRoute()">路由跳转</button>
+            <input type="text" placeholder="输入测试" />
+            <textarea placeholder="文本区域测试"></textarea>
+            <div style="height: 1000px; background: linear-gradient(to bottom, #ff7b7b, #7b7bff);">
+                <p>滚动测试区域</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>⚙️ SDK控制</h2>
+            <button onclick="setUserInfo()">设置用户信息</button>
+            <button onclick="setTags()">设置标签</button>
+            <button onclick="getSDKInfo()">获取SDK信息</button>
+            <button onclick="clearLogs()">清空日志</button>
+        </div>
+
+        <div class="section">
+            <h2>📊 实时指标</h2>
+            <div class="metrics" id="metrics">
+                <!-- 动态生成指标 -->
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📝 日志输出</h2>
+            <div class="log" id="log"></div>
+        </div>
+    </div>
+
+    <!-- 加载SDK -->
+    <script src="../dist/web-monitor-sdk.dev.js"></script>
+    
+    <script>
+        // 初始化SDK
+        let sdk;
+        try {
+            sdk = new WebMonitorSDK.default({
+                appId: 'test-app-123',
+                reportUrl: 'https://httpbin.org/post', // 测试用的接收端点
+                debug: true,
+                sampling: 1,
+                enablePerformance: true,
+                enableError: true,
+                enableBehavior: true,
+                beforeSend: (data) => {
+                    logMessage('📤 即将发送数据:', data);
+                    return data;
+                }
+            });
+
+            // 使用Vue插件示例
+            // sdk.use(WebMonitorSDK.VuePlugin);
+            
+            logMessage('✅ SDK初始化成功');
+        } catch (error) {
+            logMessage('❌ SDK初始化失败:', error);
+        }
+
+        // 日志函数
+        function logMessage(message, data = null) {
+            const log = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            
+            if (data) {
+                logEntry.innerHTML = `<span style="color: #666;">[${time}]</span> ${message}<br/><pre style="margin: 5px 0; color: #007bff;">${JSON.stringify(data, null, 2)}</pre>`;
+            } else {
+                logEntry.innerHTML = `<span style="color: #666;">[${time}]</span> ${message}`;
+            }
+            
+            log.appendChild(logEntry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // 性能测试函数
+        function loadLargeImage() {
+            const img = new Image();
+            img.onload = () => logMessage('🖼️ 大图片加载完成');
+            img.onerror = () => logMessage('❌ 大图片加载失败');
+            img.src = 'https://picsum.photos/2000/2000?' + Math.random();
+        }
+
+        function loadSlowResource() {
+            document.getElementById('slowResource').style.display = 'block';
+            logMessage('⏳ 开始加载慢资源...');
+        }
+
+        function triggerLongTask() {
+            logMessage('⏱️ 开始执行长任务...');
+            const start = performance.now();
+            // 模拟长任务
+            while (performance.now() - start < 100) {
+                Math.random();
+            }
+            logMessage('✅ 长任务执行完成');
+        }
+
+        function causeLayoutShift() {
+            const div = document.createElement('div');
+            div.style.cssText = 'height: 200px; background: red; margin: 10px 0;';
+            div.textContent = '这是一个动态插入的元素，会引起布局偏移';
+            document.body.insertBefore(div, document.querySelector('.container'));
+            
+            setTimeout(() => {
+                div.remove();
+            }, 2000);
+            
+            logMessage('📐 触发了布局偏移');
+        }
+
+        // 错误测试函数
+        function throwJSError() {
+            throw new Error('这是一个测试的JavaScript错误');
+        }
+
+        function throwPromiseError() {
+            Promise.reject(new Error('这是一个测试的Promise错误'));
+        }
+
+        function loadBrokenImage() {
+            const img = new Image();
+            img.src = 'https://non-existent-domain-12345.com/image.jpg';
+            document.body.appendChild(img);
+            logMessage('🖼️ 尝试加载失败的图片');
+        }
+
+        function makeFailedAPI() {
+            fetch('https://httpbin.org/status/500')
+                .then(response => {
+                    if (!response.ok) {
+                        logMessage('❌ API请求返回错误状态码');
+                    }
+                })
+                .catch(error => {
+                    logMessage('❌ API请求失败:', error.message);
+                });
+        }
+
+        function reportCustomError() {
+            if (sdk) {
+                sdk.reportError('这是一个自定义错误', { 
+                    category: 'test',
+                    level: 'high',
+                    extra: { userId: '123', action: 'button_click' }
+                });
+                logMessage('📝 上报了自定义错误');
+            }
+        }
+
+        // 行为测试函数
+        function trackCustomBehavior() {
+            if (sdk) {
+                sdk.reportBehavior('custom_button_click', {
+                    buttonName: '自定义行为按钮',
+                    location: 'test_page'
+                });
+                logMessage('👆 记录了自定义行为');
+            }
+        }
+
+        function changeRoute() {
+            history.pushState({}, '', location.pathname + '?test=' + Date.now());
+            logMessage('🔄 触发了路由变化');
+        }
+
+        // SDK控制函数
+        function setUserInfo() {
+            if (sdk) {
+                sdk.setUser('user_' + Date.now(), {
+                    name: '测试用户',
+                    email: 'test@example.com'
+                });
+                logMessage('👤 设置了用户信息');
+            }
+        }
+
+        function setTags() {
+            if (sdk) {
+                sdk.setTag('environment', 'test');
+                sdk.setTag('version', '1.0.0');
+                logMessage('🏷️ 设置了标签');
+            }
+        }
+
+        function getSDKInfo() {
+            if (sdk) {
+                const info = {
+                    sessionId: sdk.getSessionId(),
+                    userId: sdk.getUserId(),
+                    config: sdk.getConfig()
+                };
+                logMessage('ℹ️ SDK信息:', info);
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        // 实时指标更新
+        function updateMetrics() {
+            const metricsContainer = document.getElementById('metrics');
+            const metrics = {
+                '会话ID': sdk ? sdk.getSessionId() : 'N/A',
+                '用户ID': sdk ? sdk.getUserId() : 'N/A',
+                '当前URL': location.href,
+                '页面加载时间': performance.timing ? (performance.timing.loadEventEnd - performance.timing.navigationStart) + 'ms' : 'N/A',
+                '内存使用': performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1024 / 1024) + 'MB' : 'N/A',
+                '连接类型': navigator.connection ? navigator.connection.effectiveType : 'Unknown'
+            };
+
+            metricsContainer.innerHTML = Object.entries(metrics)
+                .map(([name, value]) => `
+                    <div class="metric">
+                        <div class="metric-name">${name}</div>
+                        <div class="metric-value">${value}</div>
+                    </div>
+                `).join('');
+        }
+
+        // 每5秒更新一次指标
+        setInterval(updateMetrics, 5000);
+        updateMetrics();
+
+        // 监听所有点击事件
+        document.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON') {
+                logMessage('👆 点击了按钮: ' + (e.target.textContent || 'Unknown'));
+            }
+        });
+
+        // 监听错误
+        window.addEventListener('error', (e) => {
+            logMessage('❌ 捕获到全局错误: ' + e.message);
+        });
+
+        window.addEventListener('unhandledrejection', (e) => {
+            logMessage('❌ 捕获到Promise错误: ' + e.reason);
+        });
+
+        logMessage('🎉 测试页面加载完成');
+    </script>
+</body>
+</html>

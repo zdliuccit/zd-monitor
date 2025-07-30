@@ -1,0 +1,407 @@
+import { getCLS, getFID, getFCP, getLCP, getTTFB } from 'web-vitals';
+import { Monitor } from '../core/Monitor';
+import { PerformanceData, PerformanceType, DataType } from '../types';
+
+/**
+ * 性能监控类
+ * 负责收集和监控各种性能指标，包括Core Web Vitals、导航时间、资源加载时间和API请求时间
+ */
+export class PerformanceMonitor {
+  /** 监控器实例，用于上报性能数据 */
+  private monitor: Monitor;
+  /** 性能观察器，用于监听资源加载事件 */
+  private observer: PerformanceObserver | null = null;
+
+  /**
+   * 构造函数
+   * @param monitor 监控器实例
+   */
+  constructor(monitor: Monitor) {
+    this.monitor = monitor;
+    // 初始化性能监控
+    this.init();
+  }
+
+  /**
+   * 初始化性能监控
+   * 启动所有性能数据收集功能
+   */
+  private init(): void {
+    // 收集Core Web Vitals指标
+    this.collectWebVitals();
+    // 收集页面导航时间
+    this.collectNavigationTiming();
+    // 收集资源加载时间
+    this.collectResourceTiming();
+    // 收集API请求时间
+    this.collectAPITiming();
+  }
+
+  /**
+   * 收集Core Web Vitals指标
+   * 使用web-vitals库收集LCP、FID、CLS、FCP、TTFB等关键性能指标
+   */
+  private collectWebVitals(): void {
+    // Largest Contentful Paint - 最大内容绘制时间
+    // 衡量页面加载性能的重要指标
+    getLCP((metric) => {
+      this.reportMetric({
+        type: PerformanceType.LCP,
+        name: 'LCP',
+        value: metric.value,
+        rating: metric.rating,
+        delta: metric.delta,
+        entries: metric.entries
+      });
+    });
+
+    // First Input Delay - 首次输入延迟
+    // 衡量页面交互响应性的关键指标
+    getFID((metric) => {
+      this.reportMetric({
+        type: PerformanceType.FID,
+        name: 'FID',
+        value: metric.value,
+        rating: metric.rating,
+        delta: metric.delta,
+        entries: metric.entries
+      });
+    });
+
+    // Cumulative Layout Shift - 累积布局偏移
+    // 衡量页面视觉稳定性的重要指标
+    getCLS((metric) => {
+      this.reportMetric({
+        type: PerformanceType.CLS,
+        name: 'CLS',
+        value: metric.value,
+        rating: metric.rating,
+        delta: metric.delta,
+        entries: metric.entries
+      });
+    });
+
+    // First Contentful Paint - 首次内容绘制
+    // 衡量页面加载感知速度的指标
+    getFCP((metric) => {
+      this.reportMetric({
+        type: PerformanceType.FCP,
+        name: 'FCP',
+        value: metric.value,
+        rating: metric.rating,
+        delta: metric.delta,
+        entries: metric.entries
+      });
+    });
+
+    // Time to First Byte - 首字节时间
+    // 衡量服务器响应速度的指标
+    getTTFB((metric) => {
+      this.reportMetric({
+        type: PerformanceType.TTFB,
+        name: 'TTFB',
+        value: metric.value,
+        rating: metric.rating,
+        delta: metric.delta,
+        entries: metric.entries
+      });
+    });
+  }
+
+  /**
+   * 收集页面导航时间
+   * 分析页面加载各个阶段的耗时，包括DNS查询、TCP连接、SSL握手、请求响应等
+   */
+  private collectNavigationTiming(): void {
+    // 监听页面加载完成事件
+    window.addEventListener('load', () => {
+      // 延迟执行确保所有指标都已计算完成
+      setTimeout(() => {
+        // 获取导航时间条目
+        const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
+        if (!navigation) return;
+
+        // 计算各个阶段的耗时
+        const timing = {
+          /** DNS查询耗时 */
+          dnsLookup: navigation.domainLookupEnd - navigation.domainLookupStart,
+          /** TCP连接耗时 */
+          tcpConnect: navigation.connectEnd - navigation.connectStart,
+          /** SSL握手耗时 */
+          sslConnect: navigation.secureConnectionStart > 0 ? navigation.connectEnd - navigation.secureConnectionStart : 0,
+          /** 请求耗时 */
+          request: navigation.responseStart - navigation.requestStart,
+          /** 响应耗时 */
+          response: navigation.responseEnd - navigation.responseStart,
+          /** DOM解析耗时 */
+          domParse: navigation.domInteractive - navigation.responseEnd,
+          /** DOMContentLoaded事件耗时 */
+          domContentLoaded: navigation.domContentLoadedEventEnd - navigation.fetchStart,
+          /** 页面完全加载耗时 */
+          loadComplete: navigation.loadEventEnd - navigation.fetchStart,
+          /** 首次绘制时间 */
+          firstPaint: this.getFirstPaint(),
+          /** 首次内容绘制时间 */
+          firstContentfulPaint: this.getFirstContentfulPaint()
+        };
+
+        // 上报导航时间数据
+        this.reportMetric({
+          type: PerformanceType.NAVIGATION,
+          name: 'Navigation Timing',
+          value: timing.loadComplete,
+          entries: [navigation as any],
+          navigationType: this.getNavigationType(typeof navigation.type === 'number' ? navigation.type : 0)
+        });
+
+        // 添加页面加载完成的面包屑记录
+        this.monitor.addBreadcrumb({
+          timestamp: Date.now(),
+          type: DataType.PERFORMANCE,
+          category: 'navigation',
+          message: 'Page loaded',
+          level: 'info',
+          data: timing
+        });
+      }, 0);
+    });
+  }
+
+  /**
+   * 收集资源加载时间
+   * 监控页面中所有资源（图片、脚本、样式表等）的加载性能
+   */
+  private collectResourceTiming(): void {
+    // 检查浏览器是否支持PerformanceObserver
+    if (!PerformanceObserver) return;
+
+    try {
+      // 创建性能观察器监听资源加载事件
+      this.observer = new PerformanceObserver((list) => {
+        const entries = list.getEntries();
+        entries.forEach((entry) => {
+          if (entry.entryType === 'resource') {
+            const resource = entry as PerformanceResourceTiming;
+            
+            // 过滤SDK自身的请求，避免循环上报
+            if (resource.name.includes(this.monitor.appId)) return;
+
+            // 上报资源加载性能数据
+            this.reportMetric({
+              type: PerformanceType.RESOURCE,
+              name: resource.name,
+              value: resource.duration,
+              entries: [entry]
+            });
+
+            // 对加载时间超过3秒的资源添加警告面包屑
+            if (resource.duration > 3000) {
+              this.monitor.addBreadcrumb({
+                timestamp: Date.now(),
+                type: DataType.PERFORMANCE,
+                category: 'resource',
+                message: `Slow resource: ${resource.name}`,
+                level: 'warning',
+                data: {
+                  duration: resource.duration,
+                  size: resource.transferSize || 0
+                }
+              });
+            }
+          }
+        });
+      });
+
+      // 开始观察资源类型的性能条目
+      this.observer.observe({ entryTypes: ['resource'] });
+    } catch (error) {
+      // 静默处理PerformanceObserver创建失败的错误
+    }
+  }
+
+  /**
+   * 收集API请求时间
+   * 拦截fetch和XMLHttpRequest请求，统计API调用的性能数据
+   */
+  private collectAPITiming(): void {
+    // 拦截fetch API调用
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      // 记录请求开始时间
+      const startTime = performance.now();
+      // 提取请求URL
+      const url = typeof args[0] === 'string' ? args[0] : (args[0] as Request).url;
+      
+      try {
+        // 执行原始的fetch请求
+        const response = await originalFetch.apply(window, args);
+        const endTime = performance.now();
+        const duration = endTime - startTime;
+
+        // 上报API性能数据
+        this.reportMetric({
+          type: PerformanceType.API,
+          name: url,
+          value: duration,
+          entries: []
+        });
+
+        // 对响应时间超过2秒的API添加警告面包屑
+        if (duration > 2000) {
+          this.monitor.addBreadcrumb({
+            timestamp: Date.now(),
+            type: DataType.PERFORMANCE,
+            category: 'api',
+            message: `Slow API: ${url}`,
+            level: 'warning',
+            data: {
+              duration,
+              status: response.status
+            }
+          });
+        }
+
+        return response;
+      } catch (error) {
+        // 处理请求失败情况
+        const endTime = performance.now();
+        const duration = endTime - startTime;
+
+        // 上报失败的API请求数据
+        this.reportMetric({
+          type: PerformanceType.API,
+          name: url,
+          value: duration,
+          entries: []
+        });
+
+        // 重新抛出错误，保持原有的错误处理逻辑
+        throw error;
+      }
+    };
+
+    // 拦截XMLHttpRequest API调用
+    const originalOpen = XMLHttpRequest.prototype.open;
+    const originalSend = XMLHttpRequest.prototype.send;
+    const self = this; // 保存当前实例的引用
+
+    // 拦截XMLHttpRequest.open方法
+    XMLHttpRequest.prototype.open = function(method: string, url: string | URL, async?: boolean, user?: string | null, password?: string | null) {
+      // 在xhr根对象上存储请求信息
+      (this as any)._monitor_url = url.toString();
+      (this as any)._monitor_startTime = performance.now();
+      // 调用原始open方法
+      return originalOpen.call(this, method, url, async ?? true, user, password);
+    };
+
+    // 拦截XMLHttpRequest.send方法
+    XMLHttpRequest.prototype.send = function(body?: Document | XMLHttpRequestBodyInit | null) {
+      const xhr = this;
+      const startTime = (xhr as any)._monitor_startTime;
+      const url = (xhr as any)._monitor_url;
+
+      // 监听请求状态变化
+      const onReadyStateChange = () => {
+        // 请求完成时计算耗时
+        if (xhr.readyState === 4) {
+          const endTime = performance.now();
+          const duration = endTime - startTime;
+
+          // 使用闭包保存的self引用上报数据
+          if (self && url) {
+            self.reportMetric({
+              type: PerformanceType.API,
+              name: url,
+              value: duration,
+              entries: []
+            });
+
+            // 对慢请求添加面包屑记录
+            if (duration > 2000) {
+              self.monitor.addBreadcrumb({
+                timestamp: Date.now(),
+                type: DataType.PERFORMANCE,
+                category: 'api',
+                message: `Slow XHR: ${url}`,
+                level: 'warning',
+                data: {
+                  duration,
+                  status: xhr.status
+                }
+              });
+            }
+          }
+        }
+      };
+
+      // 添加事件监听器
+      xhr.addEventListener('readystatechange', onReadyStateChange);
+      // 调用原始send方法
+      return originalSend.call(this, body);
+    };
+  }
+
+  /**
+   * 获取首次绘制时间
+   * @returns 首次绘制的时间戳，无法获取时返回0
+   */
+  private getFirstPaint(): number {
+    // 获取所有paint类型的性能条目
+    const entries = performance.getEntriesByType('paint');
+    // 查找首次绘制条目
+    const fpEntry = entries.find(entry => entry.name === 'first-paint');
+    // 返回时间戳或默认值0
+    return fpEntry ? fpEntry.startTime : 0;
+  }
+
+  /**
+   * 获取首次内容绘制时间
+   * @returns 首次内容绘制的时间戳，无法获取时返回0
+   */
+  private getFirstContentfulPaint(): number {
+    // 获取所有paint类型的性能条目
+    const entries = performance.getEntriesByType('paint');
+    // 查找首次内容绘制条目
+    const fcpEntry = entries.find(entry => entry.name === 'first-contentful-paint');
+    // 返回时间戳或默认值0
+    return fcpEntry ? fcpEntry.startTime : 0;
+  }
+
+  /**
+   * 获取导航类型字符串
+   * @param type 导航类型数字
+   * @returns 导航类型的字符串描述
+   */
+  private getNavigationType(type: number): string {
+    // 导航类型映射表
+    const types = ['navigate', 'reload', 'back_forward', 'prerender'];
+    // 返回对应的类型名称或未知
+    return types[type] || 'unknown';
+  }
+
+  /**
+   * 上报性能指标数据
+   * 将性能数据包装成标准格式并上报给监控器
+   * @param data 性能指标数据
+   */
+  private reportMetric(data: PerformanceData): void {
+    // 通过监控器上报数据
+    this.monitor.report({
+      type: DataType.PERFORMANCE,
+      data
+    });
+  }
+
+  /**
+   * 销毁性能监控器
+   * 清理所有观察器和事件监听器
+   */
+  public destroy(): void {
+    // 断开性能观察器
+    if (this.observer) {
+      this.observer.disconnect();
+      this.observer = null;
+    }
+    // 注意：实际应用中还应该恢复被拦截的fetch和XHR原始方法
+  }
+}

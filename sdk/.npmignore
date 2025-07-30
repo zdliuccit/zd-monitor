@@ -1,0 +1,55 @@
+# 源码目录
+src/
+scripts/
+examples/
+
+# 配置文件
+*.config.*
+tsconfig.json
+.eslintrc.*
+
+# 开发文件
+*.log
+*.lock
+node_modules/
+.yarn/
+.pnp.*
+
+# 构建临时文件
+.DS_Store
+Thumbs.db
+
+# IDE文件
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 测试文件
+test/
+tests/
+__tests__/
+*.test.*
+*.spec.*
+
+# 文档草稿
+docs/
+*.draft.md
+NOTES.md
+
+# Git文件
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+
+# 其他
+*.tmp
+*.temp
+coverage/
+.nyc_output/

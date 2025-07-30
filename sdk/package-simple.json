@@ -1,0 +1,15 @@
+{
+  "name": "web-monitor-sdk",
+  "version": "1.0.0",
+  "description": "Web performance monitoring and data tracking SDK",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "web-vitals": "^3.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
