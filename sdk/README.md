@@ -362,6 +362,10 @@ yarn publish:dry      # 模拟发布（不实际发布）
 - [问题反馈](https://github.com/your-username/web-monitor-sdk/issues)
 - [文档网站](https://your-username.github.io/web-monitor-sdk)
 
+## 👨‍💻 作者
+
+**zdliuccit**
+
 ## 💬 支持
 
 如果这个项目对你有帮助，请给个 ⭐️ 支持一下！
