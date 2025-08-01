@@ -1,4 +1,5 @@
 import { ReportData, TransportOptions, ReportPriority } from '../types';
+import { StorageManager } from '../utils/storage';
 
 /**
  * 数据传输管理器
@@ -29,6 +30,8 @@ export class Transport {
   private pendingRequests = 0;
   /** 失败重试队列 */
   private retryQueue: Array<{ data: ReportData[], retryCount: number, nextRetryTime: number }> = [];
+  /** 本地存储管理器 */
+  private storageManager: StorageManager;
 
   /**
    * 构造函数
@@ -41,7 +44,7 @@ export class Transport {
       timeout: options.timeout ?? 5000, // 默认超时时间5秒
       withCredentials: options.withCredentials ?? false, // 默认不携带身份凭证
       headers: options.headers ?? {}, // 默认空请求头
-      reportInterval: options.reportInterval ?? 10000, // 默认10秒上报间隔
+      reportInterval: options.reportInterval ?? 60000, // 默认60秒（1分钟）上报间隔
       batchSize: options.batchSize ?? 10, // 默认批量大小10条
       maxQueueSize: options.maxQueueSize ?? 100, // 默认队列最大100条
       enableImmediateReport: options.enableImmediateReport ?? true, // 默认启用立即上报
@@ -49,12 +52,47 @@ export class Transport {
       retryInterval: options.retryInterval ?? 1000 // 默认重试间隔1秒
     };
 
+    // 初始化存储管理器
+    this.storageManager = new StorageManager();
+    
+    // 从本地存储恢复未上报的数据
+    this.loadDataFromStorage();
+    
     // 启动定时上报机制
     this.startReportTimer();
     // 设置页面关闭前的数据保护
     this.setupBeforeUnload();
     // 启动重试机制
     this.startRetryTimer();
+  }
+
+  /**
+   * 从本地存储加载未上报的数据
+   */
+  private loadDataFromStorage(): void {
+    const storedData = this.storageManager.load();
+    storedData.forEach(data => {
+      const priority = data.priority || this.getDefaultPriority(data.type);
+      this.addToQueue(data, priority);
+    });
+    
+    // 加载完成后清空存储
+    this.storageManager.clear();
+  }
+
+  /**
+   * 保存数据到本地存储
+   */
+  private saveDataToStorage(): void {
+    const allData: ReportData[] = [
+      ...this.highPriorityQueue,
+      ...this.mediumPriorityQueue,
+      ...this.lowPriorityQueue
+    ];
+    
+    if (allData.length > 0) {
+      this.storageManager.save(allData);
+    }
   }
 
   /**
@@ -84,13 +122,15 @@ export class Transport {
   private setupBeforeUnload(): void {
     // 监听页面即将卸载事件
     window.addEventListener('beforeunload', () => {
+      this.saveDataToStorage();
       this.flushAllQueues();
     });
 
     // 监听页面可见性变化事件（如切换标签页）
     window.addEventListener('visibilitychange', () => {
-      // 当页面被隐藏时，尝试发送剩余数据
+      // 当页面被隐藏时，保存数据到本地存储并尝试发送剩余数据
       if (document.visibilityState === 'hidden') {
+        this.saveDataToStorage();
         this.flushAllQueues();
       }
     });
@@ -144,10 +184,14 @@ export class Transport {
 
   /**
    * 处理队列中的数据
-   * 按优先级和批量大小处理各个队列中的数据
+   * 按优先级和批量大小处理各个队列中的数据，处理完成后清空本地缓存
    */
   private processQueuedData(): void {
     if (this.isDestroyed || this.pendingRequests > 3) return; // 限制并发请求数
+    
+    const hasData = this.highPriorityQueue.length > 0 || 
+                   this.mediumPriorityQueue.length > 0 || 
+                   this.lowPriorityQueue.length > 0;
     
     // 优先处理中优先级数据
     if (this.mediumPriorityQueue.length > 0) {
@@ -159,6 +203,11 @@ export class Transport {
     if (this.lowPriorityQueue.length > 0) {
       const batch = this.lowPriorityQueue.splice(0, this.options.batchSize);
       this.sendBatch(batch, ReportPriority.LOW);
+    }
+    
+    // 如果有数据被处理，清空本地存储
+    if (hasData) {
+      this.storageManager.clear();
     }
   }
 

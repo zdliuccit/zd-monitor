@@ -62,7 +62,7 @@ export class Monitor {
       enableBehavior: config.enableBehavior ?? true, // 默认开启行为监控
       maxBreadcrumbsNum: config.maxBreadcrumbsNum ?? 20, // 默认最多保存20条面包屑
       beforeSend: config.beforeSend ?? ((data) => data), // 默认不对数据进行处理
-      reportInterval: config.reportInterval ?? 10000, // 默认10秒上报间隔
+      reportInterval: config.reportInterval ?? 60000, // 默认60秒（1分钟）上报间隔
       batchSize: config.batchSize ?? 10, // 默认批量大小为10
       maxQueueSize: config.maxQueueSize ?? 100, // 默认队列最大100条
       enableImmediateReport: config.enableImmediateReport ?? true // 默认启用立即上报

@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>本地缓存和定时上报测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .button-group {
+            margin: 20px 0;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .log {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .status {
+            background-color: #e7f3ff;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>前端性能监控SDK - 本地缓存和定时上报测试</h1>
+        
+        <div class="status">
+            <h3>当前状态</h3>
+            <div id="status">初始化中...</div>
+        </div>
+
+        <div class="button-group">
+            <button onclick="sendPerformanceData()">发送性能数据</button>
+            <button onclick="sendErrorData()">发送错误数据</button>
+            <button onclick="sendBehaviorData()">发送行为数据</button>
+            <button onclick="checkStorage()">检查本地存储</button>
+            <button onclick="clearLogs()">清空日志</button>
+        </div>
+
+        <div class="log" id="log">
+            等待操作...
+        </div>
+    </div>
+
+    <script src="../dist/index.js"></script>
+    <script>
+        let monitor;
+        let logContainer = document.getElementById('log');
+        let statusContainer = document.getElementById('status');
+        
+        function log(message) {
+            const now = new Date().toLocaleTimeString();
+            logContainer.innerHTML += `[${now}] ${message}\n`;
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function updateStatus(message) {
+            statusContainer.innerHTML = message;
+        }
+
+        // 初始化监控SDK
+        try {
+            monitor = new WebMonitorSDK({
+                appId: 'test-app',
+                reportUrl: 'http://localhost:3000/api/report', // 模拟的上报地址
+                debug: true,
+                reportInterval: 60000, // 1分钟
+                batchSize: 5,
+                maxQueueSize: 20
+            });
+            
+            log('✓ SDK初始化成功，上报间隔：1分钟');
+            updateStatus('SDK已初始化，上报间隔：1分钟');
+        } catch (error) {
+            log('✗ SDK初始化失败: ' + error.message);
+            updateStatus('SDK初始化失败');
+        }
+
+        function sendPerformanceData() {
+            try {
+                monitor.report({
+                    type: 'performance',
+                    data: {
+                        type: 'LCP',
+                        name: 'largest-contentful-paint',
+                        value: 1200,
+                        rating: 'good'
+                    }
+                });
+                log('✓ 性能数据已加入队列');
+            } catch (error) {
+                log('✗ 发送性能数据失败: ' + error.message);
+            }
+        }
+
+        function sendErrorData() {
+            try {
+                monitor.report({
+                    type: 'error',
+                    data: {
+                        type: 'js_error',
+                        message: '测试错误信息',
+                        stack: 'Error: 测试错误\n    at test.html:1:1',
+                        filename: 'test.html',
+                        lineno: 1,
+                        colno: 1
+                    },
+                    priority: 'high' // 高优先级，会立即上报
+                });
+                log('✓ 错误数据已发送（高优先级，立即上报）');
+            } catch (error) {
+                log('✗ 发送错误数据失败: ' + error.message);
+            }
+        }
+
+        function sendBehaviorData() {
+            try {
+                monitor.report({
+                    type: 'behavior',
+                    data: {
+                        type: 'click',
+                        element: 'button',
+                        selector: '#test-button',
+                        text: '测试按钮'
+                    }
+                });
+                log('✓ 行为数据已加入队列');
+            } catch (error) {
+                log('✗ 发送行为数据失败: ' + error.message);
+            }
+        }
+
+        function checkStorage() {
+            try {
+                const storageData = localStorage.getItem('web_monitor_queue');
+                if (storageData) {
+                    const data = JSON.parse(storageData);
+                    log(`📦 本地存储中有 ${data.length} 条数据:`);
+                    data.forEach((item, index) => {
+                        log(`   ${index + 1}. ${item.type} - ${new Date(item.timestamp).toLocaleTimeString()}`);
+                    });
+                } else {
+                    log('📦 本地存储为空');
+                }
+            } catch (error) {
+                log('✗ 检查本地存储失败: ' + error.message);
+            }
+        }
+
+        function clearLogs() {
+            logContainer.innerHTML = '';
+        }
+
+        // 监听页面关闭事件
+        window.addEventListener('beforeunload', () => {
+            log('🔄 页面即将关闭，数据已保存到本地存储');
+        });
+
+        // 模拟网络请求失败的情况
+        const originalFetch = window.fetch;
+        window.fetch = function(...args) {
+            const url = args[0];
+            if (url.includes('/api/report')) {
+                // 模拟网络错误
+                return Promise.reject(new Error('模拟网络错误'));
+            }
+            return originalFetch.apply(this, args);
+        };
+
+        // 定期更新状态
+        setInterval(() => {
+            if (monitor && monitor.transport) {
+                const queueStatus = monitor.transport.getQueueStatus();
+                if (queueStatus) {
+                    updateStatus(`队列状态 - 高:${queueStatus.high} 中:${queueStatus.medium} 低:${queueStatus.low} 重试:${queueStatus.retry} 发送中:${queueStatus.pending}`);
+                }
+            }
+        }, 5000);
+
+        log('🚀 测试页面已加载，可以开始测试');
+        log('💡 说明：');
+        log('   - 数据会先存储在内存队列中');
+        log('   - 每1分钟自动上报一次');
+        log('   - 页面关闭时数据会保存到localStorage');
+        log('   - 下次打开页面时会自动恢复未上报的数据');
+        log('   - 错误数据会立即上报（高优先级）');
+    </script>
+</body>
+</html>
