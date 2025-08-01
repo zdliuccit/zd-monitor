@@ -54,6 +54,8 @@ export interface ReportData {
   url: string;
   /** 用户代理字符串，包含浏览器和设备信息 */
   userAgent: string;
+  /** 网络连接类型 */
+  connectionType: string;
   /** 数据上报优先级，用于决定上报策略 */
   priority?: ReportPriority;
 }

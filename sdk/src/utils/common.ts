@@ -1,10 +1,25 @@
 /**
- * 生成会话ID
- * 使用时间戳和随机字符串组合生成唯一的会话标识符
- * @returns 格式为 "session_{timestamp}_{randomString}" 的会话ID
+ * 生成或获取会话ID
+ * 优先从localStorage获取已存储的会话ID，不存在则生成新的并存储
+ * @returns 会话唯一标识符
  */
 export function generateSessionId(): string {
-  return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  // 尝试从本地存储获取已有的会话ID
+  const stored = localStorage.getItem('web_monitor_session_id');
+  if (stored) {
+    return stored;
+  }
+  
+  // 生成新的会话ID
+  const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  try {
+    // 将会话ID存储到本地存储中
+    localStorage.setItem('web_monitor_session_id', sessionId);
+  } catch (error) {
+    // 静默处理localStorage错误（如存储空间不足、隐私模式等）
+  }
+  
+  return sessionId;
 }
 
 /**

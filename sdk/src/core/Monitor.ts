@@ -1,6 +1,6 @@
 import { MonitorConfig, ReportData, Breadcrumb, Plugin } from '../types';
 import { Transport } from './Transport';
-import { generateSessionId, generateUserId } from '../utils/common';
+import { generateSessionId, generateUserId, getConnectionType } from '../utils/common';
 
 /**
  * 监控器核心类
@@ -158,7 +158,7 @@ export class Monitor {
    * 将监控数据包装成标准格式并发送到后端
    * @param data 需要上报的数据（不包含公共字段）
    */
-  public report(data: Omit<ReportData, 'appId' | 'timestamp' | 'sessionId' | 'url' | 'userAgent' | 'breadcrumbs'>): void {
+  public report(data: Omit<ReportData, 'appId' | 'timestamp' | 'sessionId' | 'url' | 'userAgent' | 'connectionType' | 'breadcrumbs'>): void {
     this.safeExecute(() => {
       // 构建完整的上报数据对象
       const reportData: ReportData = {
@@ -168,6 +168,7 @@ export class Monitor {
         userId: this.userId, // 用户ID
         url: window.location.href, // 当前页面URL
         userAgent: navigator.userAgent, // 用户代理
+        connectionType: getConnectionType(), // 网络连接类型
         breadcrumbs: [...this.breadcrumbs], // 面包屑记录的拷贝
         ...data // 具体的监控数据
       };
