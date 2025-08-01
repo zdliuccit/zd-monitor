@@ -1,23 +1,18 @@
 import { ReportData, TransportOptions } from '../types';
 /**
  * 数据传输管理器
- * 负责将监控数据智能缓存并按优先级和时间间隔发送到后端服务器
+ * 负责将监控数据缓存并按时间间隔发送到后端服务器
  *
  * 特性：
- * - 支持按优先级分类的数据缓存
+ * - 单一队列数据缓存
  * - 可配置的时间间隔批量上报
- * - 高优先级数据立即上报
  * - 队列溢出保护
  * - 失败重试机制
  * - 页面卸载时的数据保护
  */
 export declare class Transport {
-    /** 高优先级数据队列（立即发送） */
-    private highPriorityQueue;
-    /** 中优先级数据队列（定时批量发送） */
-    private mediumPriorityQueue;
-    /** 低优先级数据队列（延迟批量发送） */
-    private lowPriorityQueue;
+    /** 数据队列 */
+    private dataQueue;
     /** 定时器ID，用于定时批量发送数据 */
     private reportTimer;
     /** 传输配置选项 */
@@ -46,6 +41,7 @@ export declare class Transport {
     /**
      * 启动定时上报定时器
      * 按配置的时间间隔定期检查并上报缓存的数据
+     * 考虑上次上报时间，避免页面刷新时重新计时
      */
     private startReportTimer;
     /**
@@ -59,33 +55,26 @@ export declare class Transport {
      */
     private setupBeforeUnload;
     /**
-     * 刷新所有队列中的数据
+     * 刷新队列中的数据
      * 在页面关闭或隐藏时调用，使用sendBeacon确保数据可靠发送
      */
     private flushAllQueues;
     /**
      * 发送数据
-     * 根据数据优先级决定是立即发送还是加入相应的缓存队列
+     * 将数据加入队列，等待批量发送
      * @param data 需要发送的监控数据
      */
     send(data: ReportData): void;
     /**
      * 处理队列中的数据
-     * 按优先级和批量大小处理各个队列中的数据，处理完成后清空本地缓存
+     * 按批量大小处理队列中的数据，处理完成后清空本地缓存
      */
     private processQueuedData;
     /**
      * 批量发送数据
-     * 按照优先级顺序尝试不同的发送方式
      * @param batch 需要发送的数据批次
-     * @param priority 数据优先级
      */
     private sendBatch;
-    /**
-     * 立即发送数据（高优先级）
-     * @param data 需要立即发送的数据
-     */
-    private sendImmediately;
     /**
      * 尝试使用sendBeacon API发送数据
      * sendBeacon是最可靠的数据发送方式，即使页面关闭也能保证数据送达
@@ -93,18 +82,6 @@ export declare class Transport {
      * @returns 如果发送成功返回Promise<void>，失败或不支持返回null
      */
     private trySendBeacon;
-    /**
-     * 根据数据类型获取默认优先级
-     * @param dataType 数据类型
-     * @returns 默认优先级
-     */
-    private getDefaultPriority;
-    /**
-     * 将数据添加到相应的优先级队列
-     * @param data 要添加的数据
-     * @param priority 数据优先级
-     */
-    private addToQueue;
     /**
      * 检查队列是否溢出，如果溢出则强制上报
      */
@@ -142,9 +119,7 @@ export declare class Transport {
      * @returns 队列状态信息
      */
     getQueueStatus(): {
-        high: number;
-        medium: number;
-        low: number;
+        queue: number;
         retry: number;
         pending: number;
     };

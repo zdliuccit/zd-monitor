@@ -6,6 +6,7 @@ import { ReportData } from '../types';
  */
 export class StorageManager {
   private readonly STORAGE_KEY = 'web_monitor_queue';
+  private readonly TIMER_KEY = 'web_monitor_timer';
   private readonly MAX_STORAGE_SIZE = 1024 * 1024; // 1MB限制
 
   /**
@@ -98,6 +99,55 @@ export class StorageManager {
       return data ? data.length : 0;
     } catch {
       return 0;
+    }
+  }
+
+  /**
+   * 保存上次上报时间
+   * @param timestamp 上次上报的时间戳
+   */
+  public saveLastReportTime(timestamp: number): boolean {
+    if (!this.isLocalStorageAvailable()) {
+      return false;
+    }
+
+    try {
+      localStorage.setItem(this.TIMER_KEY, timestamp.toString());
+      return true;
+    } catch (error) {
+      console.warn('WebMonitorSDK: Failed to save timer to localStorage:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 获取上次上报时间
+   * @returns 上次上报的时间戳，如果不存在返回0
+   */
+  public getLastReportTime(): number {
+    if (!this.isLocalStorageAvailable()) {
+      return 0;
+    }
+
+    try {
+      const timestamp = localStorage.getItem(this.TIMER_KEY);
+      return timestamp ? parseInt(timestamp, 10) : 0;
+    } catch (error) {
+      console.warn('WebMonitorSDK: Failed to load timer from localStorage:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * 清空定时器存储
+   */
+  public clearTimer(): void {
+    if (this.isLocalStorageAvailable()) {
+      try {
+        localStorage.removeItem(this.TIMER_KEY);
+      } catch (error) {
+        console.warn('WebMonitorSDK: Failed to clear timer from localStorage:', error);
+      }
     }
   }
 }

@@ -5,6 +5,7 @@ import { ReportData } from '../types';
  */
 export declare class StorageManager {
     private readonly STORAGE_KEY;
+    private readonly TIMER_KEY;
     private readonly MAX_STORAGE_SIZE;
     /**
      * 保存数据到本地存储
@@ -28,4 +29,18 @@ export declare class StorageManager {
      * 获取存储的数据大小（字节）
      */
     getStorageSize(): number;
+    /**
+     * 保存上次上报时间
+     * @param timestamp 上次上报的时间戳
+     */
+    saveLastReportTime(timestamp: number): boolean;
+    /**
+     * 获取上次上报时间
+     * @returns 上次上报的时间戳，如果不存在返回0
+     */
+    getLastReportTime(): number;
+    /**
+     * 清空定时器存储
+     */
+    clearTimer(): void;
 }

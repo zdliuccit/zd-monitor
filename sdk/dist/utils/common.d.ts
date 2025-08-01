@@ -1,7 +1,7 @@
 /**
- * 生成会话ID
- * 使用时间戳和随机字符串组合生成唯一的会话标识符
- * @returns 格式为 "session_{timestamp}_{randomString}" 的会话ID
+ * 生成或获取会话ID
+ * 优先从localStorage获取已存储的会话ID，不存在则生成新的并存储
+ * @returns 会话唯一标识符
  */
 export declare function generateSessionId(): string;
 /**

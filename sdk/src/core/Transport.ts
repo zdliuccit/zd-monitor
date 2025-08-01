@@ -1,25 +1,20 @@
-import { ReportData, TransportOptions, ReportPriority } from '../types';
+import { ReportData, TransportOptions } from '../types';
 import { StorageManager } from '../utils/storage';
 
 /**
  * 数据传输管理器
- * 负责将监控数据智能缓存并按优先级和时间间隔发送到后端服务器
+ * 负责将监控数据缓存并按时间间隔发送到后端服务器
  * 
  * 特性：
- * - 支持按优先级分类的数据缓存
+ * - 单一队列数据缓存
  * - 可配置的时间间隔批量上报
- * - 高优先级数据立即上报
  * - 队列溢出保护
  * - 失败重试机制
  * - 页面卸载时的数据保护
  */
 export class Transport {
-  /** 高优先级数据队列（立即发送） */
-  private highPriorityQueue: ReportData[] = [];
-  /** 中优先级数据队列（定时批量发送） */
-  private mediumPriorityQueue: ReportData[] = [];
-  /** 低优先级数据队列（延迟批量发送） */
-  private lowPriorityQueue: ReportData[] = [];
+  /** 数据队列 */
+  private dataQueue: ReportData[] = [];
   /** 定时器ID，用于定时批量发送数据 */
   private reportTimer: number | null = null;
   /** 传输配置选项 */
@@ -71,10 +66,7 @@ export class Transport {
    */
   private loadDataFromStorage(): void {
     const storedData = this.storageManager.load();
-    storedData.forEach(data => {
-      const priority = data.priority || this.getDefaultPriority(data.type);
-      this.addToQueue(data, priority);
-    });
+    this.dataQueue.push(...storedData);
     
     // 加载完成后清空存储
     this.storageManager.clear();
@@ -84,25 +76,50 @@ export class Transport {
    * 保存数据到本地存储
    */
   private saveDataToStorage(): void {
-    const allData: ReportData[] = [
-      ...this.highPriorityQueue,
-      ...this.mediumPriorityQueue,
-      ...this.lowPriorityQueue
-    ];
-    
-    if (allData.length > 0) {
-      this.storageManager.save(allData);
+    if (this.dataQueue.length > 0) {
+      this.storageManager.save(this.dataQueue);
     }
   }
 
   /**
    * 启动定时上报定时器
    * 按配置的时间间隔定期检查并上报缓存的数据
+   * 考虑上次上报时间，避免页面刷新时重新计时
    */
   private startReportTimer(): void {
+    const now = Date.now();
+    const lastReportTime = this.storageManager.getLastReportTime();
+    
+    // 计算距离下次上报的剩余时间
+    let nextReportDelay = this.options.reportInterval;
+    if (lastReportTime > 0) {
+      const timeSinceLastReport = now - lastReportTime;
+      if (timeSinceLastReport < this.options.reportInterval) {
+        // 如果距离上次上报还没到间隔时间，就等待剩余时间
+        nextReportDelay = this.options.reportInterval - timeSinceLastReport;
+      } else {
+        // 如果已经超过间隔时间，立即上报
+        nextReportDelay = 0;
+      }
+    }
+
+    // 如果需要立即上报
+    if (nextReportDelay <= 0) {
+      this.processQueuedData();
+      nextReportDelay = this.options.reportInterval;
+    }
+
+    // 设置定时器
     this.reportTimer = window.setInterval(() => {
       this.processQueuedData();
     }, this.options.reportInterval);
+
+    // 如果首次延迟不等于间隔时间，需要先设置一个一次性定时器
+    if (nextReportDelay !== this.options.reportInterval) {
+      setTimeout(() => {
+        this.processQueuedData();
+      }, nextReportDelay);
+    }
   }
 
   /**
@@ -137,72 +154,51 @@ export class Transport {
   }
 
   /**
-   * 刷新所有队列中的数据
+   * 刷新队列中的数据
    * 在页面关闭或隐藏时调用，使用sendBeacon确保数据可靠发送
    */
   private flushAllQueues(): void {
-    const allData: ReportData[] = [
-      ...this.highPriorityQueue,
-      ...this.mediumPriorityQueue,
-      ...this.lowPriorityQueue
-    ];
-    
-    if (allData.length > 0) {
+    if (this.dataQueue.length > 0) {
       // 使用sendBeacon发送剩余数据，保证即使页面关闭也能发送成功
-      this.trySendBeacon(allData);
+      this.trySendBeacon(this.dataQueue);
       
-      // 清空所有队列
-      this.highPriorityQueue = [];
-      this.mediumPriorityQueue = [];
-      this.lowPriorityQueue = [];
+      // 清空队列
+      this.dataQueue = [];
     }
   }
 
   /**
    * 发送数据
-   * 根据数据优先级决定是立即发送还是加入相应的缓存队列
+   * 将数据加入队列，等待批量发送
    * @param data 需要发送的监控数据
    */
   public send(data: ReportData): void {
     // 检查传输器是否已被销毁
     if (this.isDestroyed) return;
     
-    // 根据优先级决定处理策略
-    const priority = data.priority || this.getDefaultPriority(data.type);
+    // 数据加入队列
+    this.dataQueue.push(data);
     
-    if (priority === ReportPriority.HIGH && this.options.enableImmediateReport) {
-      // 高优先级数据立即发送
-      this.sendImmediately([data]);
-    } else {
-      // 其他优先级数据加入相应队列
-      this.addToQueue(data, priority);
-      
-      // 检查是否需要强制上报（队列溢出保护）
-      this.checkQueueOverflow();
-    }
+    // 检查是否需要强制上报（队列溢出保护）
+    this.checkQueueOverflow();
   }
 
   /**
    * 处理队列中的数据
-   * 按优先级和批量大小处理各个队列中的数据，处理完成后清空本地缓存
+   * 按批量大小处理队列中的数据，处理完成后清空本地缓存
    */
   private processQueuedData(): void {
     if (this.isDestroyed || this.pendingRequests > 3) return; // 限制并发请求数
     
-    const hasData = this.highPriorityQueue.length > 0 || 
-                   this.mediumPriorityQueue.length > 0 || 
-                   this.lowPriorityQueue.length > 0;
+    const hasData = this.dataQueue.length > 0;
     
-    // 优先处理中优先级数据
-    if (this.mediumPriorityQueue.length > 0) {
-      const batch = this.mediumPriorityQueue.splice(0, this.options.batchSize);
-      this.sendBatch(batch, ReportPriority.MEDIUM);
-    }
-    
-    // 其次处理低优先级数据
-    if (this.lowPriorityQueue.length > 0) {
-      const batch = this.lowPriorityQueue.splice(0, this.options.batchSize);
-      this.sendBatch(batch, ReportPriority.LOW);
+    // 处理队列数据
+    if (this.dataQueue.length > 0) {
+      const batch = this.dataQueue.splice(0, this.options.batchSize);
+      this.sendBatch(batch);
+      
+      // 更新上次上报时间
+      this.storageManager.saveLastReportTime(Date.now());
     }
     
     // 如果有数据被处理，清空本地存储
@@ -213,11 +209,9 @@ export class Transport {
 
   /**
    * 批量发送数据
-   * 按照优先级顺序尝试不同的发送方式
    * @param batch 需要发送的数据批次
-   * @param priority 数据优先级
    */
-  private sendBatch(batch: ReportData[], priority: ReportPriority): void {
+  private sendBatch(batch: ReportData[]): void {
     if (this.isDestroyed) return;
     
     this.pendingRequests++;
@@ -225,10 +219,8 @@ export class Transport {
     // 将数据序列化为JSON字符串
     const data = JSON.stringify(batch);
     
-    // 高优先级数据优先使用sendBeacon，其他使用fetch
-    const sendPromise = priority === ReportPriority.HIGH 
-      ? this.trySendBeacon(batch) || this.sendFetch(data)
-      : this.sendFetch(data).catch(() => this.sendXHR(data));
+    // 尝试发送数据
+    const sendPromise = this.sendFetch(data).catch(() => this.sendXHR(data));
     
     // 处理发送结果
     Promise.resolve(sendPromise)
@@ -236,7 +228,7 @@ export class Transport {
         this.pendingRequests--;
         // 发送成功，记录日志
         if (this.options.headers?.['debug']) {
-          console.log(`数据上报成功: ${batch.length} 条数据, 优先级: ${priority}`);
+          console.log(`数据上报成功: ${batch.length} 条数据`);
         }
       })
       .catch(() => {
@@ -246,13 +238,6 @@ export class Transport {
       });
   }
 
-  /**
-   * 立即发送数据（高优先级）
-   * @param data 需要立即发送的数据
-   */
-  private sendImmediately(data: ReportData[]): void {
-    this.sendBatch(data, ReportPriority.HIGH);
-  }
 
   /**
    * 尝试使用sendBeacon API发送数据
@@ -279,52 +264,13 @@ export class Transport {
     }
   }
 
-  /**
-   * 根据数据类型获取默认优先级
-   * @param dataType 数据类型
-   * @returns 默认优先级
-   */
-  private getDefaultPriority(dataType: string): ReportPriority {
-    switch (dataType) {
-      case 'error':
-        return ReportPriority.HIGH;  // 错误数据高优先级
-      case 'performance':
-        return ReportPriority.MEDIUM; // 性能数据中优先级
-      case 'behavior':
-        return ReportPriority.LOW;    // 行为数据低优先级
-      default:
-        return ReportPriority.MEDIUM;
-    }
-  }
 
-  /**
-   * 将数据添加到相应的优先级队列
-   * @param data 要添加的数据
-   * @param priority 数据优先级
-   */
-  private addToQueue(data: ReportData, priority: ReportPriority): void {
-    switch (priority) {
-      case ReportPriority.HIGH:
-        this.highPriorityQueue.push(data);
-        break;
-      case ReportPriority.MEDIUM:
-        this.mediumPriorityQueue.push(data);
-        break;
-      case ReportPriority.LOW:
-        this.lowPriorityQueue.push(data);
-        break;
-    }
-  }
 
   /**
    * 检查队列是否溢出，如果溢出则强制上报
    */
   private checkQueueOverflow(): void {
-    const totalQueueSize = this.highPriorityQueue.length + 
-                          this.mediumPriorityQueue.length + 
-                          this.lowPriorityQueue.length;
-    
-    if (totalQueueSize >= this.options.maxQueueSize) {
+    if (this.dataQueue.length >= this.options.maxQueueSize) {
       // 队列溢出，强制上报部分数据
       this.processQueuedData();
     }
@@ -358,7 +304,7 @@ export class Transport {
         item.nextRetryTime = now + this.options.retryInterval * Math.pow(2, item.retryCount); // 指数退避
         
         // 重新尝试发送
-        this.sendBatch(item.data, ReportPriority.MEDIUM);
+        this.sendBatch(item.data);
       } else {
         // 超过重试次数，放弃该数据
         const index = this.retryQueue.indexOf(item);
@@ -459,6 +405,9 @@ export class Transport {
     
     // 清空重试队列
     this.retryQueue = [];
+    
+    // 清空定时器缓存
+    this.storageManager.clearTimer();
   }
 
   /**
@@ -467,16 +416,12 @@ export class Transport {
    * @returns 队列状态信息
    */
   public getQueueStatus(): {
-    high: number;
-    medium: number;
-    low: number;
+    queue: number;
     retry: number;
     pending: number;
   } {
     return {
-      high: this.highPriorityQueue.length,
-      medium: this.mediumPriorityQueue.length,
-      low: this.lowPriorityQueue.length,
+      queue: this.dataQueue.length,
       retry: this.retryQueue.length,
       pending: this.pendingRequests
     };

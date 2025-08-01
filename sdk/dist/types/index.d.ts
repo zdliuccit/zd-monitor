@@ -53,8 +53,8 @@ export interface ReportData {
     url: string;
     /** 用户代理字符串，包含浏览器和设备信息 */
     userAgent: string;
-    /** 数据上报优先级，用于决定上报策略 */
-    priority?: ReportPriority;
+    /** 网络连接类型 */
+    connectionType: string;
 }
 /**
  * 监控数据类型枚举
@@ -191,18 +191,6 @@ export declare enum BehaviorType {
     ROUTE_CHANGE = "route_change",
     /** 页面访问事件 */
     PAGE_VIEW = "page_view"
-}
-/**
- * 数据上报优先级枚举
- * 定义不同类型数据的上报优先级
- */
-export declare enum ReportPriority {
-    /** 低优先级 - 可以批量延迟上报（如用户行为数据） */
-    LOW = "low",
-    /** 中优先级 - 定时批量上报（如性能数据） */
-    MEDIUM = "medium",
-    /** 高优先级 - 立即上报（如错误数据） */
-    HIGH = "high"
 }
 /**
  * 面包屑记录接口

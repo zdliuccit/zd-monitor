@@ -63,7 +63,7 @@ export declare class Monitor {
      * 将监控数据包装成标准格式并发送到后端
      * @param data 需要上报的数据（不包含公共字段）
      */
-    report(data: Omit<ReportData, 'appId' | 'timestamp' | 'sessionId' | 'url' | 'userAgent' | 'breadcrumbs'>): void;
+    report(data: Omit<ReportData, 'appId' | 'timestamp' | 'sessionId' | 'url' | 'userAgent' | 'connectionType' | 'breadcrumbs'>): void;
     /**
      * 安装插件
      * 向SDK中添加一个新的插件，并调用其安装方法
