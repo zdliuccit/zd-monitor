@@ -113,7 +113,7 @@ const monitor = new WebMonitorSDK({
 monitor.reportError('自定义错误信息', {
   category: 'business',
   level: 'high',
-  extra: { userId: '123', action: 'payment' }
+  extra: { action: 'payment' }
 });
 ```
 
@@ -151,7 +151,6 @@ monitor.setContext('feature_flags', { newUI: true });
 
 ```javascript
 const sessionId = monitor.getSessionId();
-const userId = monitor.getUserId();
 const config = monitor.getConfig();
 ```
 

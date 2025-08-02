@@ -5,12 +5,6 @@
  */
 export declare function generateSessionId(): string;
 /**
- * 生成或获取用户ID
- * 优先从localStorage获取已存储的用户ID，不存在则生成新的并存储
- * @returns 用户唯一标识符
- */
-export declare function generateUserId(): string;
-/**
  * 获取DOM元素的CSS选择器路径
  * 从指定元素开始向上遍历DOM树，生成唯一的CSS选择器路径
  * @param element 目标DOM元素
@@ -31,7 +25,7 @@ export declare function getElementText(element: Element): string;
  * @param delay 节流延迟时间（毫秒）
  * @returns 节流后的函数
  */
-export declare function throttle<T extends (...args: any[]) => any>(func: T, delay: number): T;
+export declare function throttle<T extends (..._args: any[]) => any>(func: T, delay: number): T;
 /**
  * 函数防抖器
  * 延迟执行函数，如果在延迟期间再次调用则重新计时
@@ -39,7 +33,7 @@ export declare function throttle<T extends (...args: any[]) => any>(func: T, del
  * @param delay 防抖延迟时间（毫秒）
  * @returns 防抖后的函数
  */
-export declare function debounce<T extends (...args: any[]) => any>(func: T, delay: number): T;
+export declare function debounce<T extends (..._args: any[]) => any>(func: T, delay: number): T;
 /**
  * 检测当前环境是否为机器人或爬虫
  * 通过分析User-Agent字符串来判断

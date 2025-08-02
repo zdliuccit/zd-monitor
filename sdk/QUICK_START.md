@@ -142,7 +142,6 @@ const monitor = new WebMonitorSDK({
   "appId": "your-app-id",
   "timestamp": 1640995200000,
   "sessionId": "session_xxx", 
-  "userId": "user_xxx",
   "url": "https://example.com",
   "userAgent": "Mozilla/5.0...",
   "type": "performance|error|behavior",

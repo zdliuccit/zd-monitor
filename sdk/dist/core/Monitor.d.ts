@@ -1,4 +1,5 @@
 import { MonitorConfig, ReportData, Breadcrumb, Plugin } from '../types';
+import { Transport } from './Transport';
 /**
  * 监控器核心类
  * 负责管理整个SDK的配置、数据收集、插件管理和数据上报
@@ -7,15 +8,13 @@ export declare class Monitor {
     /** 合并后的完整配置对象 */
     private config;
     /** 数据传输管理器 */
-    private transport;
+    private _transport;
     /** 面包屑记录数组，用于记录用户操作轨迹 */
     private breadcrumbs;
     /** 插件映射表，用于管理已安装的插件 */
     private plugins;
     /** 当前会话的唯一标识符 */
     private sessionId;
-    /** 当前用户的唯一标识符 */
-    private userId;
     /** 标识监控器是否已被销毁 */
     private isDestroyed;
     /**
@@ -97,8 +96,22 @@ export declare class Monitor {
      */
     get currentSessionId(): string;
     /**
-     * 获取当前用户ID
-     * @returns 当前用户的唯一标识符
+     * 获取传输器实例（用于调试）
      */
-    get currentUserId(): string;
+    get transport(): Transport;
+    /**
+     * 获取监控器调试信息
+     */
+    getDebugInfo(): {
+        config: Required<MonitorConfig>;
+        sessionId: string;
+        breadcrumbsCount: number;
+        pluginCount: number;
+        isDestroyed: boolean;
+        transportInfo: ReturnType<Transport['getDebugInfo']>;
+    };
+    /**
+     * 打印监控器调试信息到控制台
+     */
+    logDebugInfo(): void;
 }

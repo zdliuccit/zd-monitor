@@ -1,6 +1,6 @@
-import { getCLS, getFID, getFCP, getLCP, getTTFB } from 'web-vitals';
+import { onCLS, onINP, onFCP, onLCP, onTTFB, type Metric } from 'web-vitals';
 import { Monitor } from '../core/Monitor';
-import { PerformanceData, PerformanceType, DataType } from '../types';
+import { PerformanceData, PerformanceType, DataType, BatchPerformanceData } from '../types';
 
 /**
  * 性能监控类
@@ -11,15 +11,41 @@ export class PerformanceMonitor {
   private monitor: Monitor;
   /** 性能观察器，用于监听资源加载事件 */
   private observer: PerformanceObserver | null = null;
+  
+  /** 性能数据缓存队列 */
+  private performanceQueue: PerformanceData[] = [];
+  /** 批量上报定时器 */
+  private batchTimer: NodeJS.Timeout | null = null;
+  /** 批量上报间隔（毫秒），默认5秒 */
+  private batchInterval = 5000;
+  /** 批量大小，默认10个指标合并为一次上报 */
+  private batchSize = 10;
+  /** 数据收集开始时间 */
+  private batchStartTime = Date.now();
+  /** 是否启用批量上报，默认启用 */
+  private enableBatch = true;
 
   /**
    * 构造函数
    * @param monitor 监控器实例
    */
-  constructor(monitor: Monitor) {
+  constructor(monitor: Monitor, options?: { enableBatch?: boolean; batchInterval?: number; batchSize?: number }) {
     this.monitor = monitor;
+    
+    // 配置批量上报选项
+    if (options) {
+      this.enableBatch = options.enableBatch ?? true;
+      this.batchInterval = options.batchInterval ?? 5000;
+      this.batchSize = options.batchSize ?? 10;
+    }
+    
     // 初始化性能监控
     this.init();
+    
+    // 启动批量上报定时器
+    if (this.enableBatch) {
+      this.startBatchTimer();
+    }
   }
 
   /**
@@ -44,7 +70,7 @@ export class PerformanceMonitor {
   private collectWebVitals(): void {
     // Largest Contentful Paint - 最大内容绘制时间
     // 衡量页面加载性能的重要指标
-    getLCP((metric) => {
+    onLCP((metric: Metric) => {
       this.reportMetric({
         type: PerformanceType.LCP,
         name: 'LCP',
@@ -55,12 +81,12 @@ export class PerformanceMonitor {
       });
     });
 
-    // First Input Delay - 首次输入延迟
+    // Interaction to Next Paint - 交互到下次绘制延迟
     // 衡量页面交互响应性的关键指标
-    getFID((metric) => {
+    onINP((metric: Metric) => {
       this.reportMetric({
-        type: PerformanceType.FID,
-        name: 'FID',
+        type: PerformanceType.INP,
+        name: 'INP',
         value: metric.value,
         rating: metric.rating,
         delta: metric.delta,
@@ -70,7 +96,7 @@ export class PerformanceMonitor {
 
     // Cumulative Layout Shift - 累积布局偏移
     // 衡量页面视觉稳定性的重要指标
-    getCLS((metric) => {
+    onCLS((metric: Metric) => {
       this.reportMetric({
         type: PerformanceType.CLS,
         name: 'CLS',
@@ -83,7 +109,7 @@ export class PerformanceMonitor {
 
     // First Contentful Paint - 首次内容绘制
     // 衡量页面加载感知速度的指标
-    getFCP((metric) => {
+    onFCP((metric: Metric) => {
       this.reportMetric({
         type: PerformanceType.FCP,
         name: 'FCP',
@@ -96,7 +122,7 @@ export class PerformanceMonitor {
 
     // Time to First Byte - 首字节时间
     // 衡量服务器响应速度的指标
-    getTTFB((metric) => {
+    onTTFB((metric: Metric) => {
       this.reportMetric({
         type: PerformanceType.TTFB,
         name: 'TTFB',
@@ -295,7 +321,7 @@ export class PerformanceMonitor {
     };
 
     // 拦截XMLHttpRequest.send方法
-    XMLHttpRequest.prototype.send = function(body?: Document | XMLHttpRequestBodyInit | null) {
+    XMLHttpRequest.prototype.send = function(body?: any) {
       const xhr = this;
       const startTime = (xhr as any)._monitor_startTime;
       const url = (xhr as any)._monitor_url;
@@ -380,16 +406,228 @@ export class PerformanceMonitor {
   }
 
   /**
+   * 启动批量上报定时器
+   */
+  private startBatchTimer(): void {
+    this.batchTimer = setInterval(() => {
+      this.flushBatch();
+    }, this.batchInterval);
+  }
+
+  /**
+   * 停止批量上报定时器
+   */
+  private stopBatchTimer(): void {
+    if (this.batchTimer) {
+      clearInterval(this.batchTimer);
+      this.batchTimer = null;
+    }
+  }
+
+  /**
+   * 刷新批量数据，立即上报当前缓存的所有性能数据
+   */
+  private flushBatch(): void {
+    if (this.performanceQueue.length === 0) return;
+
+    const batchData = this.createBatchData();
+    
+    // 通过监控器上报批量数据
+    this.monitor.report({
+      type: DataType.PERFORMANCE,
+      data: batchData
+    });
+
+    // 清空队列，重置计时器
+    this.resetBatch();
+  }
+
+  /**
+   * 创建批量性能数据
+   */
+  private createBatchData(): BatchPerformanceData {
+    const endTime = Date.now();
+    const metrics = [...this.performanceQueue];
+    
+    // 生成摘要信息
+    const summary = this.generateSummary(metrics);
+
+    return {
+      type: PerformanceType.BATCH,
+      name: 'Performance Metrics Batch',
+      count: metrics.length,
+      startTime: this.batchStartTime,
+      endTime,
+      metrics,
+      summary
+    };
+  }
+
+  /**
+   * 生成性能数据摘要
+   */
+  private generateSummary(metrics: PerformanceData[]) {
+    const summary: BatchPerformanceData['summary'] = {
+      vitals: {},
+      navigation: {},
+      resources: { count: 0, slowCount: 0, totalSize: 0 },
+      apis: { count: 0, slowCount: 0, avgDuration: 0 }
+    };
+
+    let apiDurations: number[] = [];
+
+    metrics.forEach(metric => {
+      switch (metric.type) {
+        case PerformanceType.LCP:
+          summary.vitals!.lcp = metric.value;
+          break;
+        case PerformanceType.INP:
+          summary.vitals!.inp = metric.value;
+          break;
+        case PerformanceType.CLS:
+          summary.vitals!.cls = metric.value;
+          break;
+        case PerformanceType.FCP:
+          summary.vitals!.fcp = metric.value;
+          break;
+        case PerformanceType.TTFB:
+          summary.vitals!.ttfb = metric.value;
+          break;
+        case PerformanceType.NAVIGATION:
+          summary.navigation!.loadComplete = metric.value;
+          // 从 entries 中提取 domContentLoaded 时间
+          if (metric.entries && metric.entries[0]) {
+            const nav = metric.entries[0] as PerformanceNavigationTiming;
+            summary.navigation!.domContentLoaded = nav.domContentLoadedEventEnd - nav.fetchStart;
+          }
+          break;
+        case PerformanceType.RESOURCE:
+          summary.resources!.count++;
+          if (metric.value > 3000) {
+            summary.resources!.slowCount++;
+          }
+          // 从 entries 中提取资源大小
+          if (metric.entries && metric.entries[0]) {
+            const resource = metric.entries[0] as PerformanceResourceTiming;
+            summary.resources!.totalSize = (summary.resources!.totalSize || 0) + (resource.transferSize || 0);
+          }
+          break;
+        case PerformanceType.API:
+          summary.apis!.count++;
+          if (metric.value > 2000) {
+            summary.apis!.slowCount++;
+          }
+          apiDurations.push(metric.value);
+          break;
+      }
+    });
+
+    // 计算API平均耗时
+    if (apiDurations.length > 0) {
+      summary.apis!.avgDuration = apiDurations.reduce((a, b) => a + b, 0) / apiDurations.length;
+    }
+
+    return summary;
+  }
+
+  /**
+   * 重置批量数据
+   */
+  private resetBatch(): void {
+    this.performanceQueue = [];
+    this.batchStartTime = Date.now();
+  }
+
+  /**
    * 上报性能指标数据
    * 将性能数据包装成标准格式并上报给监控器
    * @param data 性能指标数据
    */
   private reportMetric(data: PerformanceData): void {
-    // 通过监控器上报数据
-    this.monitor.report({
-      type: DataType.PERFORMANCE,
-      data
-    });
+    if (this.enableBatch) {
+      // 添加到批量队列
+      this.performanceQueue.push(data);
+      
+      // 如果队列达到批量大小，立即上报
+      if (this.performanceQueue.length >= this.batchSize) {
+        this.flushBatch();
+      }
+    } else {
+      // 直接上报
+      this.monitor.report({
+        type: DataType.PERFORMANCE,
+        data
+      });
+    }
+  }
+
+  /**
+   * 手动刷新批量数据
+   * 立即上报当前缓存的所有性能数据
+   */
+  public flush(): void {
+    if (this.enableBatch) {
+      this.flushBatch();
+    }
+  }
+
+  /**
+   * 设置批量上报配置
+   * @param options 批量配置选项
+   */
+  public setBatchOptions(options: { enableBatch?: boolean; batchInterval?: number; batchSize?: number }): void {
+    const wasEnabled = this.enableBatch;
+    
+    // 更新配置
+    if (options.enableBatch !== undefined) {
+      this.enableBatch = options.enableBatch;
+    }
+    if (options.batchInterval !== undefined) {
+      this.batchInterval = options.batchInterval;
+    }
+    if (options.batchSize !== undefined) {
+      this.batchSize = options.batchSize;
+    }
+
+    // 如果批量模式状态发生变化，需要重新配置定时器
+    if (wasEnabled !== this.enableBatch) {
+      if (this.enableBatch) {
+        // 启用批量模式：先刷新现有数据，然后启动定时器
+        if (this.performanceQueue.length > 0) {
+          this.flushBatch();
+        }
+        this.startBatchTimer();
+      } else {
+        // 禁用批量模式：停止定时器，刷新剩余数据
+        this.stopBatchTimer();
+        if (this.performanceQueue.length > 0) {
+          this.flushBatch();
+        }
+      }
+    } else if (this.enableBatch && this.batchTimer) {
+      // 批量模式仍然启用，但间隔时间可能变化，重启定时器
+      this.stopBatchTimer();
+      this.startBatchTimer();
+    }
+  }
+
+  /**
+   * 获取当前批量队列状态
+   */
+  public getBatchStatus(): {
+    enabled: boolean;
+    queueLength: number;
+    batchInterval: number;
+    batchSize: number;
+    startTime: number;
+  } {
+    return {
+      enabled: this.enableBatch,
+      queueLength: this.performanceQueue.length,
+      batchInterval: this.batchInterval,
+      batchSize: this.batchSize,
+      startTime: this.batchStartTime
+    };
   }
 
   /**
@@ -397,11 +635,23 @@ export class PerformanceMonitor {
    * 清理所有观察器和事件监听器
    */
   public destroy(): void {
+    // 停止批量上报定时器
+    this.stopBatchTimer();
+    
+    // 刷新剩余的批量数据
+    if (this.enableBatch && this.performanceQueue.length > 0) {
+      this.flushBatch();
+    }
+    
     // 断开性能观察器
     if (this.observer) {
       this.observer.disconnect();
       this.observer = null;
     }
+    
+    // 清空队列
+    this.performanceQueue = [];
+    
     // 注意：实际应用中还应该恢复被拦截的fetch和XHR原始方法
   }
 }

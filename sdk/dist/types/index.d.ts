@@ -20,7 +20,7 @@ export interface MonitorConfig {
     /** 面包屑记录的最大数量，超过后会删除最早的记录 */
     maxBreadcrumbsNum?: number;
     /** 数据发送前的钩子函数，可对数据进行过滤或修改，返回null则不发送 */
-    beforeSend?: (data: ReportData) => ReportData | null;
+    beforeSend?: (_data: ReportData) => ReportData | null;
     /** 数据上报的时间间隔（毫秒），默认10秒 */
     reportInterval?: number;
     /** 批量上报的数据条数，默认10条 */
@@ -29,6 +29,15 @@ export interface MonitorConfig {
     maxQueueSize?: number;
     /** 是否启用立即上报模式（紧急数据如错误立即发送），默认true */
     enableImmediateReport?: boolean;
+    /** 性能监控配置 */
+    performance?: {
+        /** 是否启用性能数据批量上报，默认true */
+        enableBatch?: boolean;
+        /** 性能数据批量上报间隔（毫秒），默认5秒 */
+        batchInterval?: number;
+        /** 性能数据批量大小，默认10个指标合并上报 */
+        batchSize?: number;
+    };
 }
 /**
  * 上报数据的统一格式接口
@@ -42,13 +51,11 @@ export interface ReportData {
     /** 数据类型：性能、错误或行为 */
     type: DataType;
     /** 具体的监控数据内容，根据type不同而不同 */
-    data: PerformanceData | ErrorData | BehaviorData;
+    data: PerformanceData | ErrorData | BehaviorData | BatchPerformanceData;
     /** 面包屑记录数组，用于复现问题的上下文 */
     breadcrumbs?: Breadcrumb[];
     /** 会话ID，用于关联同一会话的多个事件 */
     sessionId: string;
-    /** 用户ID，可选，用于关联特定用户 */
-    userId?: string;
     /** 事件发生时的页面URL */
     url: string;
     /** 用户代理字符串，包含浏览器和设备信息 */
@@ -110,7 +117,55 @@ export declare enum PerformanceType {
     /** 资源加载时间 */
     RESOURCE = "resource",
     /** API请求时间 */
-    API = "api"
+    API = "api",
+    /** 批量性能数据 */
+    BATCH = "batch"
+}
+/**
+ * 批量性能数据接口
+ * 将多个性能指标合并成一个数据包进行上报
+ */
+export interface BatchPerformanceData {
+    /** 性能指标类型，固定为BATCH */
+    type: PerformanceType.BATCH;
+    /** 批量数据名称 */
+    name: string;
+    /** 包含的性能指标数量 */
+    count: number;
+    /** 批量开始收集的时间戳 */
+    startTime: number;
+    /** 批量结束收集的时间戳 */
+    endTime: number;
+    /** 合并的性能指标数据数组 */
+    metrics: PerformanceData[];
+    /** 页面加载摘要信息 */
+    summary?: {
+        /** 关键性能指标 */
+        vitals: {
+            lcp?: number;
+            inp?: number;
+            cls?: number;
+            fcp?: number;
+            ttfb?: number;
+        };
+        /** 导航时间信息 */
+        navigation?: {
+            loadComplete?: number;
+            domContentLoaded?: number;
+        };
+        /** 资源统计 */
+        resources?: {
+            count: number;
+            slowCount: number;
+            totalSize?: number;
+        };
+        /** API统计 */
+        apis?: {
+            count: number;
+            slowCount: number;
+            avgDuration?: number;
+        };
+    };
 }
 /**
  * 错误监控数据接口
@@ -218,9 +273,9 @@ export interface Plugin {
     /** 插件名称，必须唯一 */
     name: string;
     /** 插件安装方法，在使用use()时调用 */
-    install(monitor: any): void;
+    install(_monitor: any): void;
     /** 插件卸载方法，在使用unuse()时调用（可选） */
-    uninstall?(monitor: any): void;
+    uninstall?(_monitor: any): void;
 }
 /**
  * 数据传输配置接口

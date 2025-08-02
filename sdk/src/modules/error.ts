@@ -259,7 +259,7 @@ export class ErrorMonitor {
       return self.originalXHROpen.call(this, method, url, async ?? true, user, password);
     };
 
-    XMLHttpRequest.prototype.send = function(body?: Document | XMLHttpRequestBodyInit | null) {
+    XMLHttpRequest.prototype.send = function(body?: any) {
       const xhr = this;
       const url = (xhr as any)._monitor_url;
       const method = (xhr as any)._monitor_method;

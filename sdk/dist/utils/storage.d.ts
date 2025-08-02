@@ -43,4 +43,24 @@ export declare class StorageManager {
      * 清空定时器存储
      */
     clearTimer(): void;
+    /**
+     * 获取存储的原始JSON数据（用于调试）
+     * @returns 存储的原始JSON字符串
+     */
+    getRawData(): string | null;
+    /**
+     * 获取可读格式的存储数据（用于调试）
+     * @returns 格式化后的数据信息
+     */
+    getDebugInfo(): {
+        hasData: boolean;
+        dataCount: number;
+        storageSize: number;
+        lastReportTime: number;
+        data: ReportData[] | null;
+    };
+    /**
+     * 打印存储数据到控制台（用于调试）
+     */
+    logStorageData(): void;
 }

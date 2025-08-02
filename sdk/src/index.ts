@@ -44,6 +44,9 @@ export class WebMonitorSDK {
 
     // 将SDK实例挂载到全局对象，方便调试和插件访问
     (window as any).__webMonitorSDK = this;
+
+    // 挂载调试方法到全局对象
+    this.setupGlobalDebugMethods();
   }
 
   /**
@@ -60,7 +63,12 @@ export class WebMonitorSDK {
     try {
       // 根据配置决定是否启用性能监控模块
       if (this.monitor['config'].enablePerformance) {
-        this.performanceMonitor = new PerformanceMonitor(this.monitor);
+        const performanceConfig = this.monitor['config'].performance;
+        this.performanceMonitor = new PerformanceMonitor(this.monitor, {
+          enableBatch: performanceConfig?.enableBatch ?? true,
+          batchInterval: performanceConfig?.batchInterval ?? 5000,
+          batchSize: performanceConfig?.batchSize ?? 10
+        });
       }
 
       // 根据配置决定是否启用错误监控模块
@@ -141,26 +149,6 @@ export class WebMonitorSDK {
     return this;
   }
 
-  /**
-   * 设置用户信息
-   * 关联特定用户的监控数据，便于问题定位和用户行为分析
-   * @param userId 用户唯一标识符
-   * @param userInfo 用户的额外信息（如姓名、邮箱等）
-   */
-  public setUser(userId: string, userInfo?: Record<string, any>): void {
-    // 设置用户ID到监控器中
-    this.monitor['userId'] = userId;
-
-    // 添加用户设置的面包屑记录
-    this.monitor.addBreadcrumb({
-      timestamp: Date.now(),
-      type: 'behavior' as any,
-      category: 'user',
-      message: `User set: ${userId}`,
-      level: 'info',
-      data: userInfo
-    });
-  }
 
   /**
    * 设置标签
@@ -238,11 +226,159 @@ export class WebMonitorSDK {
   }
 
   /**
-   * 获取当前用户ID
-   * @returns 当前用户的唯一标识符
+   * 手动刷新性能数据
+   * 立即上报当前缓存的所有性能数据
    */
-  public getUserId(): string {
-    return this.monitor.currentUserId;
+  public flushPerformance(): void {
+    if (this.performanceMonitor) {
+      this.performanceMonitor.flush();
+    }
+  }
+
+  /**
+   * 设置性能监控批量配置
+   * @param options 批量配置选项
+   */
+  public setPerformanceBatchOptions(options: { enableBatch?: boolean; batchInterval?: number; batchSize?: number }): void {
+    if (this.performanceMonitor) {
+      this.performanceMonitor.setBatchOptions(options);
+    }
+  }
+
+  /**
+   * 获取性能监控批量状态
+   * @returns 批量状态信息
+   */
+  public getPerformanceBatchStatus(): { enabled: boolean; queueLength: number; batchInterval: number; batchSize: number; startTime: number } | null {
+    if (this.performanceMonitor) {
+      return this.performanceMonitor.getBatchStatus();
+    }
+    return null;
+  }
+
+
+  /**
+   * 设置全局调试方法
+   * 在window对象上挂载便于调试的方法
+   */
+  private setupGlobalDebugMethods(): void {
+    // 创建全局调试对象
+    (window as any).WebMonitorSDK = {
+      // 查看SDK状态
+      debug: () => {
+        this.monitor.logDebugInfo();
+      },
+
+      // 查看详细缓存数据
+      viewCache: () => {
+        this.monitor.transport.getStorageManager().logStorageData();
+      },
+
+      // 清空本地缓存
+      clearCache: () => {
+        this.monitor.transport.getStorageManager().clear();
+        console.log('✅ 本地缓存已清空');
+      },
+
+      // 手动触发数据上报
+      flush: () => {
+        this.monitor.transport.flush();
+        console.log('🚀 已手动触发数据上报');
+      },
+
+      // 获取队列状态
+      getStatus: () => {
+        const status = this.monitor.transport.getQueueStatus();
+        console.table(status);
+        return status;
+      },
+
+      // 查看原始localStorage数据
+      getRawData: () => {
+        const rawData = this.monitor.transport.getStorageManager().getRawData();
+        if (rawData) {
+          console.log('📄 原始localStorage数据:');
+          console.log(rawData);
+          return JSON.parse(rawData);
+        } else {
+          console.log('❌ 没有存储数据');
+          return null;
+        }
+      },
+
+      // 获取调试信息对象
+      getDebugInfo: () => {
+        return this.monitor.getDebugInfo();
+      },
+
+      // 性能监控相关调试方法
+      performance: {
+        // 手动刷新性能数据
+        flush: () => {
+          this.flushPerformance();
+          console.log('🚀 已手动刷新性能监控数据');
+        },
+
+        // 获取性能批量状态
+        getStatus: () => {
+          const status = this.getPerformanceBatchStatus();
+          if (status) {
+            console.table(status);
+            return status;
+          } else {
+            console.log('❌ 性能监控未启用');
+            return null;
+          }
+        },
+
+        // 设置批量配置
+        setBatch: (options: { enableBatch?: boolean; batchInterval?: number; batchSize?: number }) => {
+          this.setPerformanceBatchOptions(options);
+          console.log('⚙️ 性能监控批量配置已更新:', options);
+        },
+
+        // 禁用批量模式
+        disableBatch: () => {
+          this.setPerformanceBatchOptions({ enableBatch: false });
+          console.log('❌ 性能监控批量模式已禁用');
+        },
+
+        // 启用批量模式
+        enableBatch: () => {
+          this.setPerformanceBatchOptions({ enableBatch: true });
+          console.log('✅ 性能监控批量模式已启用');
+        }
+      },
+
+      // 帮助信息
+      help: () => {
+        console.group('🔧 WebMonitorSDK 调试命令');
+        console.log('基础命令:');
+        console.log('  WebMonitorSDK.debug()         - 查看完整调试信息');
+        console.log('  WebMonitorSDK.viewCache()     - 查看详细缓存数据');
+        console.log('  WebMonitorSDK.clearCache()    - 清空本地缓存');
+        console.log('  WebMonitorSDK.flush()         - 手动触发数据上报');
+        console.log('  WebMonitorSDK.getStatus()     - 获取队列状态');
+        console.log('  WebMonitorSDK.getRawData()    - 查看原始localStorage数据');
+        console.log('  WebMonitorSDK.getDebugInfo()  - 获取调试信息对象');
+        console.log('');
+        console.log('性能监控命令:');
+        console.log('  WebMonitorSDK.performance.flush()        - 刷新性能数据');
+        console.log('  WebMonitorSDK.performance.getStatus()    - 获取性能批量状态');
+        console.log('  WebMonitorSDK.performance.setBatch(opts) - 设置批量配置');
+        console.log('  WebMonitorSDK.performance.enableBatch()  - 启用批量模式');
+        console.log('  WebMonitorSDK.performance.disableBatch() - 禁用批量模式');
+        console.log('');
+        console.log('  WebMonitorSDK.help()          - 显示此帮助信息');
+        console.groupEnd();
+      }
+    };
+
+    // 在调试模式下提示用户
+    if (this.monitor.isDebug) {
+      console.log('🔧 WebMonitorSDK 调试模式已启用');
+      console.log('💡 使用 WebMonitorSDK.help() 查看可用的调试命令');
+    }
   }
 }
 
@@ -262,5 +398,4 @@ export { VuePlugin, ReactPlugin };
 // 导出TypeScript类型定义
 export * from './types';
 
-// 默认导出主类
 export default WebMonitorSDK;

@@ -434,4 +434,67 @@ export class Transport {
   public flush(): void {
     this.processQueuedData();
   }
+
+  /**
+   * 获取存储管理器实例（用于调试）
+   */
+  public getStorageManager(): StorageManager {
+    return this.storageManager;
+  }
+
+  /**
+   * 获取传输器调试信息
+   */
+  public getDebugInfo(): {
+    isDestroyed: boolean;
+    queueStatus: ReturnType<Transport['getQueueStatus']>;
+    storageInfo: ReturnType<StorageManager['getDebugInfo']>;
+    options: Required<TransportOptions>;
+  } {
+    return {
+      isDestroyed: this.isDestroyed,
+      queueStatus: this.getQueueStatus(),
+      storageInfo: this.storageManager.getDebugInfo(),
+      options: { ...this.options }
+    };
+  }
+
+  /**
+   * 打印传输器调试信息到控制台
+   */
+  public logDebugInfo(): void {
+    const debugInfo = this.getDebugInfo();
+    
+    console.group('🚀 WebMonitorSDK Transport Debug Info');
+    
+    console.log('📈 传输器状态:');
+    console.log(`  • 是否已销毁: ${debugInfo.isDestroyed ? '✅' : '❌'}`);
+    console.log(`  • 内存队列: ${debugInfo.queueStatus.queue} 条`);
+    console.log(`  • 重试队列: ${debugInfo.queueStatus.retry} 条`);
+    console.log(`  • 正在发送: ${debugInfo.queueStatus.pending} 个请求`);
+    
+    console.log('⚙️ 配置信息:');
+    console.log(`  • 上报间隔: ${debugInfo.options.reportInterval / 1000}s`);
+    console.log(`  • 批量大小: ${debugInfo.options.batchSize} 条`);
+    console.log(`  • 队列上限: ${debugInfo.options.maxQueueSize} 条`);
+    console.log(`  • 重试次数: ${debugInfo.options.retryCount} 次`);
+    
+    console.log('💾 存储状态:');
+    console.log(`  • 本地缓存: ${debugInfo.storageInfo.hasData ? '✅' : '❌'}`);
+    console.log(`  • 缓存条数: ${debugInfo.storageInfo.dataCount} 条`);
+    console.log(`  • 缓存大小: ${(debugInfo.storageInfo.storageSize / 1024).toFixed(2)} KB`);
+    
+    if (debugInfo.storageInfo.lastReportTime > 0) {
+      const lastReportDate = new Date(debugInfo.storageInfo.lastReportTime);
+      const timeSinceLastReport = Date.now() - debugInfo.storageInfo.lastReportTime;
+      console.log(`  • 上次上报: ${lastReportDate.toLocaleString()} (${Math.round(timeSinceLastReport / 1000)}s前)`);
+    }
+    
+    console.groupEnd();
+    
+    // 如果有本地缓存数据，提供查看选项
+    if (debugInfo.storageInfo.hasData) {
+      console.log('💡 提示: 使用 monitor.transport.getStorageManager().logStorageData() 查看详细缓存数据');
+    }
+  }
 }

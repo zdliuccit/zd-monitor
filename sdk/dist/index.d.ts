@@ -63,13 +63,6 @@ export declare class WebMonitorSDK {
      */
     unuse(pluginName: string): WebMonitorSDK;
     /**
-     * 设置用户信息
-     * 关联特定用户的监控数据，便于问题定位和用户行为分析
-     * @param userId 用户唯一标识符
-     * @param userInfo 用户的额外信息（如姓名、邮箱等）
-     */
-    setUser(userId: string, userInfo?: Record<string, any>): void;
-    /**
      * 设置标签
      * 为监控数据添加标签，便于分类和筛选
      * @param key 标签键
@@ -100,10 +93,35 @@ export declare class WebMonitorSDK {
      */
     getSessionId(): string;
     /**
-     * 获取当前用户ID
-     * @returns 当前用户的唯一标识符
+     * 手动刷新性能数据
+     * 立即上报当前缓存的所有性能数据
      */
-    getUserId(): string;
+    flushPerformance(): void;
+    /**
+     * 设置性能监控批量配置
+     * @param options 批量配置选项
+     */
+    setPerformanceBatchOptions(options: {
+        enableBatch?: boolean;
+        batchInterval?: number;
+        batchSize?: number;
+    }): void;
+    /**
+     * 获取性能监控批量状态
+     * @returns 批量状态信息
+     */
+    getPerformanceBatchStatus(): {
+        enabled: boolean;
+        queueLength: number;
+        batchInterval: number;
+        batchSize: number;
+        startTime: number;
+    } | null;
+    /**
+     * 设置全局调试方法
+     * 在window对象上挂载便于调试的方法
+     */
+    private setupGlobalDebugMethods;
 }
 /**
  * 创建WebMonitorSDK实例的工厂函数

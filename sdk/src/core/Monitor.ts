@@ -1,6 +1,6 @@
 import { MonitorConfig, ReportData, Breadcrumb, Plugin } from '../types';
 import { Transport } from './Transport';
-import { generateSessionId, generateUserId, getConnectionType } from '../utils/common';
+import { generateSessionId, getConnectionType } from '../utils/common';
 
 /**
  * 监控器核心类
@@ -10,15 +10,13 @@ export class Monitor {
   /** 合并后的完整配置对象 */
   private config: Required<MonitorConfig>;
   /** 数据传输管理器 */
-  private transport: Transport;
+  private _transport: Transport;
   /** 面包屑记录数组，用于记录用户操作轨迹 */
   private breadcrumbs: Breadcrumb[] = [];
   /** 插件映射表，用于管理已安装的插件 */
   private plugins: Map<string, Plugin> = new Map();
   /** 当前会话的唯一标识符 */
   private sessionId: string;
-  /** 当前用户的唯一标识符 */
-  private userId: string;
   /** 标识监控器是否已被销毁 */
   private isDestroyed = false;
 
@@ -29,11 +27,10 @@ export class Monitor {
   constructor(config: MonitorConfig) {
     // 合并配置，为可选参数设置默认值
     this.config = this.mergeConfig(config);
-    // 生成会话ID和用户ID
+    // 生成会话ID
     this.sessionId = generateSessionId();
-    this.userId = generateUserId();
     // 初始化数据传输管理器
-    this.transport = new Transport({
+    this._transport = new Transport({
       url: this.config.reportUrl,
       reportInterval: this.config.reportInterval,
       batchSize: this.config.batchSize,
@@ -65,7 +62,12 @@ export class Monitor {
       reportInterval: config.reportInterval ?? 60000, // 默认60秒（1分钟）上报间隔
       batchSize: config.batchSize ?? 10, // 默认批量大小为10
       maxQueueSize: config.maxQueueSize ?? 100, // 默认队列最大100条
-      enableImmediateReport: config.enableImmediateReport ?? true // 默认启用立即上报
+      enableImmediateReport: config.enableImmediateReport ?? true, // 默认启用立即上报
+      performance: {
+        enableBatch: config.performance?.enableBatch ?? true, // 默认启用性能数据批量上报
+        batchInterval: config.performance?.batchInterval ?? 5000, // 默认5秒上报间隔
+        batchSize: config.performance?.batchSize ?? 10 // 默认10个指标合并上报
+      }
     };
   }
 
@@ -106,14 +108,14 @@ export class Monitor {
     };
 
     // 监听JavaScript运行时错误
-    window.addEventListener('error', (_event) => {
+    window.addEventListener('error', () => {
       this.safeExecute(() => {
         // 错误处理逻辑将在后续模块中实现
       });
     });
 
     // 监听Promise未处理的异常
-    window.addEventListener('unhandledrejection', (_event) => {
+    window.addEventListener('unhandledrejection', () => {
       this.safeExecute(() => {
         // Promise错误处理逻辑将在后续模块中实现
       });
@@ -165,7 +167,6 @@ export class Monitor {
         appId: this.config.appId, // 应用ID
         timestamp: Date.now(), // 当前时间戳
         sessionId: this.sessionId, // 会话ID
-        userId: this.userId, // 用户ID
         url: window.location.href, // 当前页面URL
         userAgent: navigator.userAgent, // 用户代理
         connectionType: getConnectionType(), // 网络连接类型
@@ -177,7 +178,7 @@ export class Monitor {
       const processedData = this.config.beforeSend(reportData);
       // 如果函数返回null，则不发送数据
       if (processedData) {
-        this.transport.send(processedData);
+        this._transport.send(processedData);
         
         // 在调试模式下输出上报的数据
         if (this.config.debug) {
@@ -229,7 +230,7 @@ export class Monitor {
     // 标记监控器为已销毁状态
     this.isDestroyed = true;
     // 销毁数据传输管理器
-    this.transport.destroy();
+    this._transport.destroy();
     // 卸载所有插件
     this.plugins.forEach(plugin => {
       if (plugin.uninstall) {
@@ -268,11 +269,67 @@ export class Monitor {
     return this.sessionId;
   }
 
+
   /**
-   * 获取当前用户ID
-   * @returns 当前用户的唯一标识符
+   * 获取传输器实例（用于调试）
    */
-  public get currentUserId(): string {
-    return this.userId;
+  public get transport(): Transport {
+    return this._transport;
+  }
+
+  /**
+   * 获取监控器调试信息
+   */
+  public getDebugInfo(): {
+    config: Required<MonitorConfig>;
+    sessionId: string;
+    breadcrumbsCount: number;
+    pluginCount: number;
+    isDestroyed: boolean;
+    transportInfo: ReturnType<Transport['getDebugInfo']>;
+  } {
+    return {
+      config: { ...this.config },
+      sessionId: this.sessionId,
+      breadcrumbsCount: this.breadcrumbs.length,
+      pluginCount: this.plugins.size,
+      isDestroyed: this.isDestroyed,
+      transportInfo: this._transport.getDebugInfo()
+    };
+  }
+
+  /**
+   * 打印监控器调试信息到控制台
+   */
+  public logDebugInfo(): void {
+    const debugInfo = this.getDebugInfo();
+    
+    console.group('🔍 WebMonitorSDK Debug Info');
+    
+    console.log('📋 基础信息:');
+    console.log(`  • App ID: ${debugInfo.config.appId}`);
+    console.log(`  • Session ID: ${debugInfo.sessionId}`);
+    console.log(`  • 是否已销毁: ${debugInfo.isDestroyed ? '✅' : '❌'}`);
+    
+    console.log('⚙️ 监控配置:');
+    console.log(`  • 调试模式: ${debugInfo.config.debug ? '✅' : '❌'}`);
+    console.log(`  • 性能监控: ${debugInfo.config.enablePerformance ? '✅' : '❌'}`);
+    console.log(`  • 错误监控: ${debugInfo.config.enableError ? '✅' : '❌'}`);
+    console.log(`  • 行为监控: ${debugInfo.config.enableBehavior ? '✅' : '❌'}`);
+    console.log(`  • 采样率: ${(debugInfo.config.sampling * 100).toFixed(1)}%`);
+    
+    console.log('📊 运行状态:');
+    console.log(`  • 面包屑: ${debugInfo.breadcrumbsCount}/${debugInfo.config.maxBreadcrumbsNum} 条`);
+    console.log(`  • 插件数量: ${debugInfo.pluginCount} 个`);
+    
+    console.groupEnd();
+    
+    // 打印传输器信息
+    this._transport.logDebugInfo();
+    
+    console.log('💡 调试命令:');
+    console.log('  • 查看详细缓存: window.WebMonitorSDK.viewCache()');
+    console.log('  • 清空缓存: window.WebMonitorSDK.clearCache()');
+    console.log('  • 手动上报: window.WebMonitorSDK.flush()');
   }
 }

@@ -150,4 +150,74 @@ export class StorageManager {
       }
     }
   }
+
+  /**
+   * 获取存储的原始JSON数据（用于调试）
+   * @returns 存储的原始JSON字符串
+   */
+  public getRawData(): string | null {
+    if (!this.isLocalStorageAvailable()) {
+      return null;
+    }
+
+    try {
+      return localStorage.getItem(this.STORAGE_KEY);
+    } catch (error) {
+      console.warn('WebMonitorSDK: Failed to get raw data from localStorage:', error);
+      return null;
+    }
+  }
+
+  /**
+   * 获取可读格式的存储数据（用于调试）
+   * @returns 格式化后的数据信息
+   */
+  public getDebugInfo(): {
+    hasData: boolean;
+    dataCount: number;
+    storageSize: number;
+    lastReportTime: number;
+    data: ReportData[] | null;
+  } {
+    const data = this.load();
+    const rawData = this.getRawData();
+    
+    return {
+      hasData: data.length > 0,
+      dataCount: data.length,
+      storageSize: rawData ? rawData.length : 0,
+      lastReportTime: this.getLastReportTime(),
+      data: data.length > 0 ? data : null
+    };
+  }
+
+  /**
+   * 打印存储数据到控制台（用于调试）
+   */
+  public logStorageData(): void {
+    const debugInfo = this.getDebugInfo();
+    
+    console.group('📦 WebMonitorSDK Storage Debug Info');
+    console.log('📊 数据统计:');
+    console.log(`  • 是否有数据: ${debugInfo.hasData ? '✅' : '❌'}`);
+    console.log(`  • 数据条数: ${debugInfo.dataCount}`);
+    console.log(`  • 存储大小: ${(debugInfo.storageSize / 1024).toFixed(2)} KB`);
+    
+    if (debugInfo.lastReportTime > 0) {
+      const lastReportDate = new Date(debugInfo.lastReportTime);
+      console.log(`  • 上次上报: ${lastReportDate.toLocaleString()}`);
+    } else {
+      console.log('  • 上次上报: 暂无记录');
+    }
+    
+    if (debugInfo.data && debugInfo.data.length > 0) {
+      console.log('📋 存储的数据:');
+      debugInfo.data.forEach((item, index) => {
+        console.log(`  ${index + 1}. [${item.type}] ${new Date(item.timestamp).toLocaleString()}`);
+        console.log('     ', item);
+      });
+    }
+    
+    console.groupEnd();
+  }
 }

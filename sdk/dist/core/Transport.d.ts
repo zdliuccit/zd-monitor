@@ -1,4 +1,5 @@
 import { ReportData, TransportOptions } from '../types';
+import { StorageManager } from '../utils/storage';
 /**
  * 数据传输管理器
  * 负责将监控数据缓存并按时间间隔发送到后端服务器
@@ -128,4 +129,21 @@ export declare class Transport {
      * 用于特殊情况下的手动上报
      */
     flush(): void;
+    /**
+     * 获取存储管理器实例（用于调试）
+     */
+    getStorageManager(): StorageManager;
+    /**
+     * 获取传输器调试信息
+     */
+    getDebugInfo(): {
+        isDestroyed: boolean;
+        queueStatus: ReturnType<Transport['getQueueStatus']>;
+        storageInfo: ReturnType<StorageManager['getDebugInfo']>;
+        options: Required<TransportOptions>;
+    };
+    /**
+     * 打印传输器调试信息到控制台
+     */
+    logDebugInfo(): void;
 }

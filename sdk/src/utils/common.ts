@@ -22,29 +22,6 @@ export function generateSessionId(): string {
   return sessionId;
 }
 
-/**
- * 生成或获取用户ID
- * 优先从localStorage获取已存储的用户ID，不存在则生成新的并存储
- * @returns 用户唯一标识符
- */
-export function generateUserId(): string {
-  // 尝试从本地存储获取已有的用户ID
-  const stored = localStorage.getItem('web_monitor_user_id');
-  if (stored) {
-    return stored;
-  }
-  
-  // 生成新的用户ID
-  const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  try {
-    // 将用户ID存储到本地存储中
-    localStorage.setItem('web_monitor_user_id', userId);
-  } catch (error) {
-    // 静默处理localStorage错误（如存储空间不足、隐私模式等）
-  }
-  
-  return userId;
-}
 
 /**
  * 获取DOM元素的CSS选择器路径
@@ -120,7 +97,7 @@ export function getElementText(element: Element): string {
  * @param delay 节流延迟时间（毫秒）
  * @returns 节流后的函数
  */
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (..._args: any[]) => any>(
   func: T,
   delay: number
 ): T {
@@ -161,7 +138,7 @@ export function throttle<T extends (...args: any[]) => any>(
  * @param delay 防抖延迟时间（毫秒）
  * @returns 防抖后的函数
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (..._args: any[]) => any>(
   func: T,
   delay: number
 ): T {

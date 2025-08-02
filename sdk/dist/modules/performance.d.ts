@@ -8,11 +8,27 @@ export declare class PerformanceMonitor {
     private monitor;
     /** 性能观察器，用于监听资源加载事件 */
     private observer;
+    /** 性能数据缓存队列 */
+    private performanceQueue;
+    /** 批量上报定时器 */
+    private batchTimer;
+    /** 批量上报间隔（毫秒），默认5秒 */
+    private batchInterval;
+    /** 批量大小，默认10个指标合并为一次上报 */
+    private batchSize;
+    /** 数据收集开始时间 */
+    private batchStartTime;
+    /** 是否启用批量上报，默认启用 */
+    private enableBatch;
     /**
      * 构造函数
      * @param monitor 监控器实例
      */
-    constructor(monitor: Monitor);
+    constructor(monitor: Monitor, options?: {
+        enableBatch?: boolean;
+        batchInterval?: number;
+        batchSize?: number;
+    });
     /**
      * 初始化性能监控
      * 启动所有性能数据收集功能
@@ -55,11 +71,59 @@ export declare class PerformanceMonitor {
      */
     private getNavigationType;
     /**
+     * 启动批量上报定时器
+     */
+    private startBatchTimer;
+    /**
+     * 停止批量上报定时器
+     */
+    private stopBatchTimer;
+    /**
+     * 刷新批量数据，立即上报当前缓存的所有性能数据
+     */
+    private flushBatch;
+    /**
+     * 创建批量性能数据
+     */
+    private createBatchData;
+    /**
+     * 生成性能数据摘要
+     */
+    private generateSummary;
+    /**
+     * 重置批量数据
+     */
+    private resetBatch;
+    /**
      * 上报性能指标数据
      * 将性能数据包装成标准格式并上报给监控器
      * @param data 性能指标数据
      */
     private reportMetric;
+    /**
+     * 手动刷新批量数据
+     * 立即上报当前缓存的所有性能数据
+     */
+    flush(): void;
+    /**
+     * 设置批量上报配置
+     * @param options 批量配置选项
+     */
+    setBatchOptions(options: {
+        enableBatch?: boolean;
+        batchInterval?: number;
+        batchSize?: number;
+    }): void;
+    /**
+     * 获取当前批量队列状态
+     */
+    getBatchStatus(): {
+        enabled: boolean;
+        queueLength: number;
+        batchInterval: number;
+        batchSize: number;
+        startTime: number;
+    };
     /**
      * 销毁性能监控器
      * 清理所有观察器和事件监听器
